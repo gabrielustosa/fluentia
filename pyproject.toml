@@ -26,6 +26,7 @@ isort = "^5.13.2"
 factory-boy = "^3.3.0"
 alembic = "^1.13.1"
 ipython = "^8.22.1"
+pydantic-settings = "^2.2.1"
 
 [build-system]
 requires = ["poetry-core"]
