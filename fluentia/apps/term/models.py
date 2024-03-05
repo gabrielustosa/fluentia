@@ -14,25 +14,37 @@ class TermLexical(SQLModel, table=True):
     type: str
 
 
-class TermPronunciation(SQLModel, table=True):
+class Pronunciation(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str = Field(foreign_key='term.term')
-    origin_language: str = Field(foreign_key='term.origin_language')
-    audio_file: str = Field(nullable=True)
-    description: str = Field(nullable=True)
-    translation_language: str = Field(nullable=True)
-    term_example_id: int = Field(foreign_key='termexample.id', nullable=True)
+    audio_file: str | None = None
+    description: str | None = None
+    translation_language: str | None = None
     phonetic: str
+
+
+class PronunciationLink(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+    pronunciation_id: int = Field(foreign_key='pronunciation.id')
+    term: str = Field(foreign_key='term.term', nullable=True, default=None)
+    origin_language: str = Field(
+        foreign_key='term.origin_language', nullable=True, default=None
+    )
+    term_example_id: int = Field(
+        foreign_key='termexample.id', nullable=True, default=None
+    )
+    term_lexical_id: int = Field(
+        foreign_key='termlexical.id', nullable=True, default=None
+    )
 
 
 class TermDefinition(SQLModel, table=True):
     id: int = Field(primary_key=True)
     term: str = Field(foreign_key='term.term')
     origin_language: str = Field(foreign_key='term.origin_language')
-    term_level: str = Field(nullable=True)
-    partOfSpeech: str = Field(nullable=True)
-    translation_language: str = Field(nullable=True)
-    translation: str = Field(nullable=True)
+    term_level: str | None = None
+    partOfSpeech: str | None = None
+    translation_language: str | None = None
+    translation: str | None = None
     definition: str
 
 
@@ -40,7 +52,9 @@ class TermExample(SQLModel, table=True):
     id: int = Field(primary_key=True)
     term: str = Field(foreign_key='term.term')
     origin_language: str = Field(foreign_key='term.origin_language')
-    term_definition_id: int = Field(foreign_key='termdefinition.id', nullable=True)
-    example_translation: str = Field(nullable=True)
-    translation_language: str = Field(nullable=True)
+    term_definition_id: int | None = Field(
+        foreign_key='termdefinition.id', nullable=True, default=None
+    )
+    example_translation: str | None = None
+    translation_language: str | None = None
     example: str
