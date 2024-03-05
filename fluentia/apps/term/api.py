@@ -1,12 +1,7 @@
 from fastapi import APIRouter, Query
 
 from fluentia.apps.term import schema
-from fluentia.apps.term.constants import (
-    Language,
-    PartOfSpeech,
-    TermLevel,
-    TermLexicalType,
-)
+from fluentia.apps.term import constants
 from fluentia.core.api.constants import (
     NOT_ENOUGH_PERMISSION,
     TERM_NOT_FOUND,
@@ -26,9 +21,7 @@ term_router = APIRouter(prefix='/term', tags=['term'])
             'description': 'O termo enviado já existe nesta linguagem.',
             'content': {
                 'application/json': {
-                    'example': {
-                        'detail': 'term already registered in this language.'
-                    }
+                    'example': {'detail': 'term already registered in this language.'}
                 }
             },
         },
@@ -56,9 +49,8 @@ def create_term(term: schema.TermSchemaBase):
 )
 def get_term(
     term: str,
-    origin_language: Language,
-    translation_language: Language
-    | None = Query(
+    origin_language: constants.Language,
+    translation_language: constants.Language | None = Query(
         default=None,
         description='Se existir tradução para tal linguagem, virá os significados do termo no idioma referido.',
     ),
@@ -80,7 +72,7 @@ def get_term(
 )
 def search_terms(
     text: str,
-    origin_language: Language,
+    origin_language: constants.Language,
 ):
     pass
 
@@ -89,16 +81,19 @@ def search_terms(
     path='/pronunciation',
     status_code=201,
     response_model=schema.TermPronunciationView,
-    response_description='A pronúncia para o termo ou exemplo do termo referênciado é criada.',
+    response_description='A pronúncia para o modelo referenciado é criada.',
     responses={
         404: TERM_NOT_FOUND,
         403: NOT_ENOUGH_PERMISSION,
         401: USER_NOT_AUTHORIZED,
     },
-    summary='Criação das pronúncias de um termo ou exemplo.',
-    description='Endpoint utilizado para criar pronúncias com áudio, fonemas e descrição sobre um determinado termo ou exemplo do termo.',
+    summary='Criação de pronúncia.',
+    description='Endpoint utilizado para criar pronúncias com áudio, fonemas e descrição sobre um determinado modelo.',
 )
-def create_pronunciation(pronunciation: schema.TermPronunciationSchema):
+def create_pronunciation(
+    pronunciation: schema.TermPronunciationSchema,
+    model: constants.PronunciationModel,
+):
     pass
 
 
@@ -106,12 +101,18 @@ def create_pronunciation(pronunciation: schema.TermPronunciationSchema):
     path='/pronunciation',
     status_code=200,
     response_model=list[schema.TermPronunciationView],
-    response_description='A consulta das pronúncias do termo ou exemplo especificado.',
+    response_description='A consulta das pronúncias do modelo especificado.',
     responses={404: TERM_NOT_FOUND},
-    summary='Consulta das pronúncias de um termo ou exemplo.',
-    description='Endpoint utilizado para consultar pronúncias com áudio, fonemas e descrição sobre um determinado termo ou exemplo.',
+    summary='Consulta das pronúncias.',
+    description='Endpoint utilizado para consultar pronúncias com áudio, fonemas e descrição sobre um determinado modelo.',
 )
-def get_pronunciation(term: str, origin_language: Language):
+def get_pronunciation(
+    model: constants.PronunciationModel,
+    term: str | None = None,
+    origin_language: constants.Language | None = None,
+    term_example_id: int | None = None,
+    term_lexical_id: int | None = None,
+):
     pass
 
 
@@ -119,14 +120,14 @@ def get_pronunciation(term: str, origin_language: Language):
     path='/pronunciation/{pronunciation_id}',
     status_code=200,
     response_model=schema.TermPronunciationView,
-    response_description='Atualizar a pronúncia de um termo ou exemplo especificado.',
+    response_description='Atualizar a pronúncia do modelo especificado.',
     responses={
         404: TERM_NOT_FOUND,
         403: NOT_ENOUGH_PERMISSION,
         401: USER_NOT_AUTHORIZED,
     },
-    summary='Atualização das pronúncias de um termo ou definição.',
-    description='Endpoint utilizado para atualizar o áudio, fonemas ou descrição de uma pronúncia sobre um determinado termo ou exemplo.',
+    summary='Atualização das pronúncias.',
+    description='Endpoint utilizado para atualizar o áudio, fonemas ou descrição de uma pronúncia sobre um determinado modelo.',
 )
 def update_pronuncation(
     pronunciation_id: int, pronunciation: schema.TermPronunciationUpdate
@@ -162,16 +163,17 @@ def create_definition(definition: schema.TermDefinitionSchema):
 )
 def get_definition(
     term: str,
-    origin_language: Language,
-    translation_language: Language
-    | None = Query(
+    origin_language: constants.Language,
+    translation_language: constants.Language | None = Query(
         default=None,
         description='Caso houver definições para a tradução requirida ela será retornada.',
     ),
-    partOfSpeech: PartOfSpeech
-    | None = Query(default=None, description='Filtrar por classe gramatical.'),
-    term_level: TermLevel
-    | None = Query(default=None, description='Filtrar por level do termo.'),
+    partOfSpeech: constants.PartOfSpeech | None = Query(
+        default=None, description='Filtrar por classe gramatical.'
+    ),
+    term_level: constants.TermLevel | None = Query(
+        default=None, description='Filtrar por level do termo.'
+    ),
 ):
     pass
 
@@ -223,14 +225,12 @@ def create_example(example: schema.TermExampleSchema):
 )
 def get_example(
     term: str,
-    origin_language: Language,
-    translation_language: Language
-    | None = Query(
+    origin_language: constants.Language,
+    translation_language: constants.Language | None = Query(
         default=None,
         description='Caso houver exemplos para a tradução requirida ela será retornada.',
     ),
-    term_definition_id: int
-    | None = Query(
+    term_definition_id: int | None = Query(
         default=None,
         description='Filtrar por exemplos sobre a definição de um termo.',
     ),
@@ -280,5 +280,7 @@ def post_lexical(lexical: schema.TermLexicalSchema):
     summary='Consulta de relação de uma relação lexical.',
     description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
-def get_lexical(term: str, origin_language: Language, type: TermLexicalType):
+def get_lexical(
+    term: str, origin_language: constants.Language, type: constants.TermLexicalType
+):
     pass

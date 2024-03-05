@@ -38,3 +38,9 @@ class Language(str, Enum):
     FRANÇAIS = 'fr'
     ESPAÑOL = 'es'
     ITALIANO = 'it'
+
+
+class PronunciationModel(str, Enum):
+    TERM = 'term'
+    LEXICAL = 'lexical'
+    EXAMPLE = 'example'
