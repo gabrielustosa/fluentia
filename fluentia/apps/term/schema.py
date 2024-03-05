@@ -11,7 +11,9 @@ class TermSchemaBase(BaseModel):
 class TermSchema(TermSchemaBase):
     meanings: list[str] = Field(examples=[['house', 'place']])
     lexical: list['TermLexicalSchema'] | None = Field(default_factory=list)
-    pronunciations: list['TermPronunciationSchema'] | None = Field(default_factory=list)
+    pronunciations: list['TermPronunciationSchema'] | None = Field(
+        default_factory=list
+    )
 
 
 class TermPronunciationSchema(BaseModel):
@@ -19,7 +21,9 @@ class TermPronunciationSchema(BaseModel):
         default=None, examples=['https://mylink.com/my-audio.mp3']
     )
     phonetic: str = Field(examples=['/ˈhaʊ.zɪz/'])
-    description: str | None = Field(examples=['português do brasil'], default=None)
+    description: str | None = Field(
+        examples=['português do brasil'], default=None
+    )
     translation_language: constants.Language | None = None
     term: str | None = Field(examples=['Casa'], default=None)
     origin_language: constants.Language | None = None
@@ -31,9 +35,19 @@ class TermPronunciationView(TermPronunciationSchema):
     id: int
 
 
+class TermPronunciationLink(BaseModel):
+    pronunciation_id: int
+    term: str | None = Field(examples=['Casa'], default=None)
+    origin_language: constants.Language | None = None
+    term_example_id: int | None = None
+    term_lexical_id: int | None = None
+
+
 class TermPronunciationUpdate(BaseModel):
     phonetic: str | None = Field(default=None, examples=['/ˈhaʊ.zɪz/'])
-    description: str | None = Field(examples=['português do brasil'], default=None)
+    description: str | None = Field(
+        examples=['português do brasil'], default=None
+    )
     audio_file: HttpUrl | None = Field(
         default=None, examples=['https://mylink.com/my-audio.mp3']
     )
@@ -48,10 +62,14 @@ class TermDefinitionSchema(TermSchemaBase):
     meaning: str = Field(examples=['Casa, lar'])
     translation: str | None = Field(
         default=None,
-        examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
+        examples=[
+            'Conjunto de parades, quartos e teto com a finalidade de habitação.'
+        ],
     )
     definition: str = Field(
-        examples=['Set of walls, rooms, and roof with specific purpose of habitation.']
+        examples=[
+            'Set of walls, rooms, and roof with specific purpose of habitation.'
+        ]
     )
 
 
@@ -65,10 +83,14 @@ class TermDefinitionSchemaUpdate(BaseModel):
     meaning: str | None = Field(default=None, examples=['Casa, lar'])
     translation: str | None = Field(
         default=None,
-        examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
+        examples=[
+            'Conjunto de parades, quartos e teto com a finalidade de habitação.'
+        ],
     )
     definition: str | None = Field(
-        examples=['Set of walls, rooms, and roof with specific purpose of habitation.'],
+        examples=[
+            'Set of walls, rooms, and roof with specific purpose of habitation.'
+        ],
         default=None,
     )
 
@@ -107,7 +129,9 @@ class TermExampleSchemaUpdate(BaseModel):
 class TermLexicalSchema(TermSchemaBase):
     value: str = Field(examples=['Lar'])
     type: constants.TermLexicalType
-    description: str | None = Field(default=None, examples=['verbo - outro nome'])
+    description: str | None = Field(
+        default=None, examples=['verbo - outro nome']
+    )
 
 
 class TermLexicalSchemaView(TermLexicalSchema):

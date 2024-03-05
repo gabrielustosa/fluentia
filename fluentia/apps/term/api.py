@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Query
 
-from fluentia.apps.term import schema
-from fluentia.apps.term import constants
+from fluentia.apps.term import constants, schema
 from fluentia.core.api.constants import (
     NOT_ENOUGH_PERMISSION,
     TERM_NOT_FOUND,
@@ -21,7 +20,9 @@ term_router = APIRouter(prefix='/term', tags=['term'])
             'description': 'O termo enviado já existe nesta linguagem.',
             'content': {
                 'application/json': {
-                    'example': {'detail': 'term already registered in this language.'}
+                    'example': {
+                        'detail': 'term already registered in this language.'
+                    }
                 }
             },
         },
@@ -50,7 +51,8 @@ def create_term(term: schema.TermSchemaBase):
 def get_term(
     term: str,
     origin_language: constants.Language,
-    translation_language: constants.Language | None = Query(
+    translation_language: constants.Language
+    | None = Query(
         default=None,
         description='Se existir tradução para tal linguagem, virá os significados do termo no idioma referido.',
     ),
@@ -92,6 +94,26 @@ def search_terms(
 )
 def create_pronunciation(
     pronunciation: schema.TermPronunciationSchema,
+    model: constants.PronunciationModel,
+):
+    pass
+
+
+@term_router.post(
+    path='/pronunciation/link',
+    status_code=201,
+    response_model=schema.TermPronunciationView,
+    response_description='A pronúncia para o modelo referenciado é ligada.',
+    responses={
+        404: TERM_NOT_FOUND,
+        403: NOT_ENOUGH_PERMISSION,
+        401: USER_NOT_AUTHORIZED,
+    },
+    summary='Ligar de pronúncia.',
+    description='Endpoint utilizado para ligar pronúncias já existentes em um determinado modelo.',
+)
+def link_pronunciation(
+    pronunciation: schema.TermPronunciationLink,
     model: constants.PronunciationModel,
 ):
     pass
@@ -164,16 +186,15 @@ def create_definition(definition: schema.TermDefinitionSchema):
 def get_definition(
     term: str,
     origin_language: constants.Language,
-    translation_language: constants.Language | None = Query(
+    translation_language: constants.Language
+    | None = Query(
         default=None,
         description='Caso houver definições para a tradução requirida ela será retornada.',
     ),
-    partOfSpeech: constants.PartOfSpeech | None = Query(
-        default=None, description='Filtrar por classe gramatical.'
-    ),
-    term_level: constants.TermLevel | None = Query(
-        default=None, description='Filtrar por level do termo.'
-    ),
+    partOfSpeech: constants.PartOfSpeech
+    | None = Query(default=None, description='Filtrar por classe gramatical.'),
+    term_level: constants.TermLevel
+    | None = Query(default=None, description='Filtrar por level do termo.'),
 ):
     pass
 
@@ -226,11 +247,13 @@ def create_example(example: schema.TermExampleSchema):
 def get_example(
     term: str,
     origin_language: constants.Language,
-    translation_language: constants.Language | None = Query(
+    translation_language: constants.Language
+    | None = Query(
         default=None,
         description='Caso houver exemplos para a tradução requirida ela será retornada.',
     ),
-    term_definition_id: int | None = Query(
+    term_definition_id: int
+    | None = Query(
         default=None,
         description='Filtrar por exemplos sobre a definição de um termo.',
     ),
@@ -281,6 +304,8 @@ def post_lexical(lexical: schema.TermLexicalSchema):
     description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
 def get_lexical(
-    term: str, origin_language: constants.Language, type: constants.TermLexicalType
+    term: str,
+    origin_language: constants.Language,
+    type: constants.TermLexicalType,
 ):
     pass
