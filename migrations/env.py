@@ -8,6 +8,7 @@ from alembic import context
 from fluentia.settings import Settings
 from fluentia.apps.term.models import *
 from fluentia.apps.user.models import *
+from fluentia.apps.card.models import *
 
 
 config = context.config

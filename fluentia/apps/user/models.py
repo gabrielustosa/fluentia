@@ -10,4 +10,4 @@ class User(SQLModel, table=True):
     password: str
     created: datetime
     native_language: str
-    is_superuser: bool = Field(default=False)
+    is_superuser: bool = False
