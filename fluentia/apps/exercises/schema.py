@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from fluentia.apps.exercises.models import ExerciseType
+from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.term.schema import TermSchemaBase
 
 
