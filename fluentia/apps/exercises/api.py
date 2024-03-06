@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, UploadFile
 
 from fluentia.apps.exercises import schema
-from fluentia.apps.exercises.models import ExerciseType
+from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.term.constants import Language, TermLevel
 from fluentia.core.api.constants import (
     CARDSET_NOT_FOUND,

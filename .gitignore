@@ -193,5 +193,6 @@ pyrightconfig.json
 .ionide
 
 database.db
+tests.db
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,python
