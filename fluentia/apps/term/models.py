@@ -2,7 +2,7 @@ from sqlmodel import Field, SQLModel
 
 
 class Term(SQLModel, table=True):
-    term: str = Field(primary_key=True)
+    term: str = Field(primary_key=True, unique=True)
     origin_language: str = Field(primary_key=True)
 
 
@@ -18,7 +18,7 @@ class Pronunciation(SQLModel, table=True):
     id: int = Field(primary_key=True)
     audio_file: str | None = None
     description: str | None = None
-    translation_language: str | None = None
+    origin_language: str
     phonetic: str
 
 
@@ -42,10 +42,15 @@ class TermDefinition(SQLModel, table=True):
     term: str = Field(foreign_key='term.term')
     origin_language: str = Field(foreign_key='term.origin_language')
     term_level: str | None = None
-    partOfSpeech: str | None = None
-    translation_language: str | None = None
-    translation: str | None = None
+    partOfSpeech: str
     definition: str
+
+
+class TermDefinitionTranslation(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+    translation_language: str
+    translation: str
+    term_definition_id: int | None = Field(foreign_key='termdefinition.id')
 
 
 class TermExample(SQLModel, table=True):
@@ -55,6 +60,11 @@ class TermExample(SQLModel, table=True):
     term_definition_id: int | None = Field(
         foreign_key='termdefinition.id', nullable=True, default=None
     )
-    example_translation: str | None = None
-    translation_language: str | None = None
     example: str
+
+
+class TermExampleTranslation(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+    translation_language: str
+    translation: str
+    term_example_id: int = Field(foreign_key='termexample.id')

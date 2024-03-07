@@ -32,7 +32,7 @@ class PartOfSpeech(str, Enum):
 
 
 class Language(str, Enum):
-    PORTUGUES_BRASIL = 'pt-BR'
+    PORTUGUÊS_BRASIL = 'pt-br'
     ENGLISH = 'en'
     DEUTSCH = 'de'
     FRANÇAIS = 'fr'
