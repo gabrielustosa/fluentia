@@ -8,6 +8,6 @@ class User(SQLModel, table=True):
     username: str
     email: str
     password: str
-    created: datetime
+    created: datetime = Field(default_factory=datetime.utcnow)
     native_language: str
     is_superuser: bool = False

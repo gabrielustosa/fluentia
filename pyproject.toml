@@ -13,6 +13,8 @@ sqlmodel = "^0.0.16"
 uvicorn = "^0.27.1"
 email-validator = "^2.1.1"
 python-multipart = "^0.0.9"
+pyjwt = "^2.8.0"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 
 
 [tool.poetry.group.dev.dependencies]
@@ -27,6 +29,7 @@ factory-boy = "^3.3.0"
 alembic = "^1.13.1"
 ipython = "^8.22.1"
 pydantic-settings = "^2.2.1"
+freezegun = "^1.4.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -53,5 +56,5 @@ lint = "ruff . --fix && blue --check . --diff"
 format = "blue .  && isort ."
 run = "uvicorn fluentia.main:app --reload"
 pre_test = "task format"
-test = "pytest -s -x --cov=. -vv"
+test = "pytest -s -x --cov=. -vv --disable-warnings"
 post_test = "coverage html"

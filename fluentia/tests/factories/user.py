@@ -6,7 +6,7 @@ from fluentia.apps.user.models import User
 
 
 class UserFactory(factory.alchemy.SQLAlchemyModelFactory):
-    username = factory.Faker('username')
+    username = factory.Faker('name')
     email = factory.Faker('email')
     password = factory.Faker('password')
     native_language = fuzzy.FuzzyChoice(Language)

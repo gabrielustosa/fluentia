@@ -1,8 +1,8 @@
-"""create term tables
+"""empty message
 
-Revision ID: b96e10013ddf
+Revision ID: 19ab88016ea3
 Revises: 
-Create Date: 2024-03-07 13:28:49.742178
+Create Date: 2024-03-07 19:14:40.814262
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'b96e10013ddf'
+revision: str = '19ab88016ea3'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,8 +32,7 @@ def upgrade() -> None:
     op.create_table('term',
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.PrimaryKeyConstraint('term', 'origin_language'),
-    sa.UniqueConstraint('term')
+    sa.PrimaryKeyConstraint('term', 'origin_language')
     )
     op.create_table('user',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -50,7 +49,7 @@ def upgrade() -> None:
     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('created', sa.DateTime(), nullable=False),
-    sa.Column('modified', sa.DateTime(), nullable=False),
+    sa.Column('modified', sa.DateTime(), nullable=True),
     sa.Column('language', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
@@ -97,7 +96,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('cardset_id', sa.Integer(), nullable=False),
     sa.Column('created', sa.DateTime(), nullable=False),
-    sa.Column('modified', sa.DateTime(), nullable=False),
+    sa.Column('modified', sa.DateTime(), nullable=True),
     sa.Column('note', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),

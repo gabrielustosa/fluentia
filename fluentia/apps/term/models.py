@@ -2,7 +2,7 @@ from sqlmodel import Field, SQLModel
 
 
 class Term(SQLModel, table=True):
-    term: str = Field(primary_key=True, unique=True)
+    term: str = Field(primary_key=True)
     origin_language: str = Field(primary_key=True)
 
 

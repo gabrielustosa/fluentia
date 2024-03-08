@@ -25,7 +25,7 @@ class ExerciseHistory(SQLModel, table=True):
     term_level: str = Field(foreign_key='exercise.term_level')
     type: str = Field(foreign_key='exercise.type')
     user_id: int = Field(foreign_key='user.id')
-    created: datetime
+    created: datetime = Field(default_factory=datetime.utcnow)
     correct: bool
     text_response: str | None = None
     text_request: str | None = None
