@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 from factory.alchemy import SQLAlchemyModelFactory
 from fastapi.testclient import TestClient
@@ -30,26 +28,30 @@ def session():
     )
     SQLModel.metadata.create_all(engine)
     session = Session(engine)
-    for factory in SQLAlchemyModelFactory.__subclasses__():
-        factory._meta.sqlalchemy_session = session
 
+    def set_session(cls):
+        for factory in cls.__subclasses__():
+            factory._meta.sqlalchemy_session = session
+            set_session(factory)
+
+    set_session(SQLAlchemyModelFactory)
     yield session
-
     SQLModel.metadata.drop_all(engine)
 
 
 @pytest.fixture
-def user(session):
-    password = 'test'
-    user = UserFactory(password=get_password_hash(password))
+def user(session, request):
+    param = getattr(request, 'param', {})
+    password = param.pop('password', 'pass123')
+
+    user = UserFactory(password=get_password_hash(password), **param)
 
     session.add(user)
     session.commit()
     session.refresh(user)
 
-    mock = MagicMock(**user.model_dump(), clean_password=password)
-    mock.mock_add_spec(spec=user.model_dump().keys(), spec_set=True)
-    return mock
+    user.__dict__['clean_password'] = password
+    return user
 
 
 @pytest.fixture
@@ -59,3 +61,12 @@ def token_header(client, user):
         data={'username': user.email, 'password': user.clean_password},
     )
     return {'Authorization': f'Bearer {response.json()["access_token"]}'}
+
+
+@pytest.fixture
+def generate_payload():
+    def _generate(factory, exclude=None, include=None, **kwargs):
+        result = factory.build(**kwargs)
+        return result.model_dump(exclude=exclude, include=include)
+
+    return _generate

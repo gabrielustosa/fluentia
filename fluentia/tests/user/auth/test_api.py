@@ -60,4 +60,4 @@ def test_token_expiry(client, user):
             headers={'Authorization': f'Bearer {token}'},
         )
         assert response.status_code == 401
-        assert response.json() == {'detail': 'Could not validate credentials'}
+        assert response.json() == {'detail': 'could not validate credentials'}

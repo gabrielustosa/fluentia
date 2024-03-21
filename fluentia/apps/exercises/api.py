@@ -36,16 +36,12 @@ exercise_router = APIRouter(prefix='/term/exercise', tags=['exercises'])
 def get_exercises(
     exerciseType: ExerciseType,
     origin_language: Language,
-    amount: int = Query(
-        default=10, le=256, ge=1, description='Número de exercícios.'
-    ),
-    term_level: TermLevel
-    | None = Query(
+    amount: int = Query(default=10, le=256, ge=1, description='Número de exercícios.'),
+    term_level: TermLevel | None = Query(
         default=None, description='Filtar por dificuldade do termo.'
     ),
     translation_language: Language | None = None,
-    cardset_id: int
-    | None = Query(
+    cardset_id: int | None = Query(
         default=None, description='Filtrar por conjunto de cartas.'
     ),
 ):

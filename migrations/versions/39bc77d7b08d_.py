@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 19ab88016ea3
+Revision ID: 39bc77d7b08d
 Revises: 
-Create Date: 2024-03-07 19:14:40.814262
+Create Date: 2024-03-17 11:10:20.490876
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '19ab88016ea3'
+revision: str = '39bc77d7b08d'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,13 +25,14 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('audio_file', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('phonetic', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('text', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('term',
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.PrimaryKeyConstraint('term', 'origin_language')
     )
     op.create_table('user',
@@ -74,9 +75,9 @@ def upgrade() -> None:
     op.create_table('termdefinition',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('term_level', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('partOfSpeech', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
+    sa.Column('term_level', sa.Enum('BEGINNER', 'ELEMENTARY', 'INTERMEDIATE', 'UPPER_INTERMEDIATE', 'ADVANCED', 'MASTER', name='termlevel'), nullable=True),
+    sa.Column('part_of_speech', sa.Enum('ADJECTIVE', 'NOUN', 'VERB', 'ADVERB', 'CONJUNCTION', 'PREPOSITION', 'PRONOUN', 'DETERMINER', 'NUMBER', 'PREDETERMINER', 'PREFIX', 'SUFFIX', 'SLANG', name='partofspeech'), nullable=False),
     sa.Column('definition', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['origin_language'], ['term.origin_language'], ),
     sa.ForeignKeyConstraint(['term'], ['term.term'], ),
@@ -85,9 +86,9 @@ def upgrade() -> None:
     op.create_table('termlexical',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('value', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('type', sa.Enum('SYNONYM', 'ANTONYM', 'FORM', name='termlexicaltype'), nullable=False),
     sa.ForeignKeyConstraint(['origin_language'], ['term.origin_language'], ),
     sa.ForeignKeyConstraint(['term'], ['term.term'], ),
     sa.PrimaryKeyConstraint('id')
@@ -124,17 +125,17 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('termdefinitiontranslation',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('translation_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
+    sa.Column('term_definition_id', sa.Integer(), nullable=False),
     sa.Column('translation', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('term_definition_id', sa.Integer(), nullable=True),
+    sa.Column('meaning', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['term_definition_id'], ['termdefinition.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('language', 'term_definition_id')
     )
     op.create_table('termexample',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('term_definition_id', sa.Integer(), nullable=True),
     sa.Column('example', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['origin_language'], ['term.origin_language'], ),
@@ -146,7 +147,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('pronunciation_id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('origin_language', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
     sa.Column('term_example_id', sa.Integer(), nullable=True),
     sa.Column('term_lexical_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['origin_language'], ['term.origin_language'], ),
@@ -154,15 +155,15 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['term'], ['term.term'], ),
     sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ),
     sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('pronunciation_id')
     )
     op.create_table('termexampletranslation',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('translation_language', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('translation', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('term_example_id', sa.Integer(), nullable=False),
+    sa.Column('translation', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('language', 'term_example_id')
     )
     # ### end Alembic commands ###
 

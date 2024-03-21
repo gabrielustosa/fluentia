@@ -5,9 +5,7 @@ from sqlmodel import Field, SQLModel
 
 class Exercise(SQLModel, table=True):
     term: str = Field(primary_key=True, foreign_key='term.term')
-    origin_language: str = Field(
-        primary_key=True, foreign_key='term.origin_language'
-    )
+    origin_language: str = Field(primary_key=True, foreign_key='term.origin_language')
     term_level: str = Field(primary_key=True)
     type: str = Field(primary_key=True)
 

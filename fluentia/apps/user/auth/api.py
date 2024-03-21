@@ -43,21 +43,13 @@ def login_for_access_token(
     form_data: OAuth2Form,
     session: Session,
 ):
-    user = session.exec(
-        select(User).where(User.email == form_data.username)
-    ).first()
+    user = session.exec(select(User).where(User.email == form_data.username)).first()
 
     if not user:
-        raise HTTPException(
-            status_code=400, detail='Incorrect email or password'
-        )
+        raise HTTPException(status_code=400, detail='Incorrect email or password')
 
     if not verify_password(form_data.password, user.password):
-        print(form_data.password)
-        print(user.password)
-        raise HTTPException(
-            status_code=400, detail='Incorrect email or password'
-        )
+        raise HTTPException(status_code=400, detail='Incorrect email or password')
 
     access_token = create_access_token(data={'sub': user.email})
 

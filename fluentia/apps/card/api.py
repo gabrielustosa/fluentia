@@ -33,9 +33,7 @@ def create_cardset(cardset: schema.CardSetSchema):
     summary='Consulta sobre os conjuntos de cartões de aprendizado.',
     description='Endpoint utilizado para consultar todos os conjunto de cartões de aprendizado de um usuário.',
 )
-def get_cardsets(
-    name: str = Query(default='', description='Nome a ser filtrado.')
-):
+def get_cardsets(name: str = Query(default='', description='Nome a ser filtrado.')):
     pass
 
 

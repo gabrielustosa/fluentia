@@ -24,9 +24,7 @@ Session = Annotated[SQLModelSession, Depends(get_session)]
         409: {
             'description': 'Email já cadastrado.',
             'content': {
-                'application/json': {
-                    'example': {'detail': 'email already registered.'}
-                }
+                'application/json': {'example': {'detail': 'email already registered.'}}
             },
         },
     },
@@ -34,15 +32,11 @@ Session = Annotated[SQLModelSession, Depends(get_session)]
     description='Endpoint utilizado para a criação de um novo usuário.',
 )
 def create_user(user_schema: UserSchema, session: Session):
-    db_user = session.exec(
-        select(User).where(User.email == user_schema.email)
-    ).first()
+    db_user = session.exec(select(User).where(User.email == user_schema.email)).first()
     if db_user is not None:
-        raise HTTPException(
-            status_code=409, detail='email already registered.'
-        )
+        raise HTTPException(status_code=409, detail='email already registered.')
 
-    payload = user_schema.dict()
+    payload = user_schema.model_dump()
     password = payload.pop('password')
     hashed_password = get_password_hash(password)
     payload['password'] = hashed_password
@@ -66,9 +60,7 @@ def create_user(user_schema: UserSchema, session: Session):
         404: {
             'description': 'Usuário especificado não foi encontrado.',
             'content': {
-                'application/json': {
-                    'example': {'detail': 'user does not exists.'}
-                }
+                'application/json': {'example': {'detail': 'user does not exists.'}}
             },
         },
     },
@@ -82,13 +74,10 @@ def update_user(
     session: Session,
 ):
     if user_id != current_user.id:
-        raise HTTPException(
-            status_code=401, detail='credentials do not match.'
-        )
+        raise HTTPException(status_code=401, detail='credentials do not match.')
 
-    for key, value in user_schema.model_dump().items():
-        if value is not None:
-            setattr(current_user, key, value)
+    for key, value in user_schema.model_dump(exclude_unset=True).items():
+        setattr(current_user, key, value)
 
     session.commit()
     session.refresh(current_user)

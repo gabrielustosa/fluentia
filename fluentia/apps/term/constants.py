@@ -4,7 +4,7 @@ from enum import Enum
 class TermLexicalType(str, Enum):
     SYNONYM = 'synonym'
     ANTONYM = 'antonym'
-    FORMS = 'forms'
+    FORM = 'form'
 
 
 class TermLevel(str, Enum):
@@ -29,18 +29,16 @@ class PartOfSpeech(str, Enum):
     PREDETERMINER = 'predeterminer'
     PREFIX = 'prefix'
     SUFFIX = 'suffix'
+    SLANG = 'slang'
 
 
 class Language(str, Enum):
-    PORTUGUÊS_BRASIL = 'pt-br'
+    PORTUGUESE = 'pt'
     ENGLISH = 'en'
     DEUTSCH = 'de'
-    FRANÇAIS = 'fr'
-    ESPAÑOL = 'es'
-    ITALIANO = 'it'
-
-
-class PronunciationModel(str, Enum):
-    TERM = 'term'
-    LEXICAL = 'lexical'
-    EXAMPLE = 'example'
+    FRENCH = 'fr'
+    SPANISH = 'es'
+    ITALIAN = 'it'
+    CHINESE = 'zh'
+    JAPONESE = 'ja'
+    RUSSIAN = 'ru'

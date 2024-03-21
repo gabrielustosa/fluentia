@@ -56,9 +56,7 @@ class CardSchemaView(CardSchema):
 
 
 class CardSchemaUpdate(BaseModel):
-    note: str | None = Field(
-        default=None, examples=['Casa pode ser um lugar grande.']
-    )
+    note: str | None = Field(default=None, examples=['Casa pode ser um lugar grande.'])
     tags: list[str] | None = Field(
         default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
     )

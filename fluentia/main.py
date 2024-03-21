@@ -1,4 +1,7 @@
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from pydantic import ValidationError
+from starlette.responses import JSONResponse
 
 from fluentia.apps.card.api import card_router
 from fluentia.apps.exercises.api import exercise_router
@@ -13,3 +16,11 @@ app.include_router(user_router)
 app.include_router(auth_router)
 app.include_router(card_router)
 app.include_router(exercise_router)
+
+
+@app.exception_handler(ValidationError)
+async def validation_error_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=422,
+        content={'detail': jsonable_encoder(exc.errors())},
+    )

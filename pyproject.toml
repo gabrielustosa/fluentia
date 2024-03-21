@@ -52,9 +52,9 @@ pythonpath = "."
 extend-exclude = "(migrations/)"
 
 [tool.taskipy.tasks]
-lint = "ruff . --fix && blue --check . --diff"
-format = "blue .  && isort ."
+lint = "ruff check . --fix && blue --check . --diff"
+format = "ruff format .  && isort ."
 run = "uvicorn fluentia.main:app --reload"
 pre_test = "task format"
-test = "pytest -s -x --cov=. -vv --disable-warnings"
+test = "pytest -s -x --cov=. -vv"
 post_test = "coverage html"

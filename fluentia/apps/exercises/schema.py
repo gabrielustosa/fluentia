@@ -25,9 +25,7 @@ class WriteSentenceSchema(BaseModel):
     shuffled_sentence: list[str] = Field(
         examples=[['almoçei', 'na', 'Ontem', 'casa', 'da', 'eu', 'mãe minha.']]
     )
-    sentence: str = Field(
-        examples=["Yesterday a have lunch in my mother's house."]
-    )
+    sentence: str = Field(examples=["Yesterday a have lunch in my mother's house."])
 
 
 class ListenSchema(BaseModel):
