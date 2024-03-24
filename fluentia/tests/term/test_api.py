@@ -24,7 +24,6 @@ from fluentia.apps.term.schema import (
     TermExampleView,
     TermLexicalSchema,
     TermSchema,
-    TermSchemaBase,
 )
 from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.main import app
@@ -140,7 +139,7 @@ class TestTerm:
         assert response.status_code == 200
         assert Term(**response.json()) == term
 
-    def test_get_term_with_meaings(self, client):
+    def test_get_term_with_meanings(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -210,7 +209,7 @@ class TestTerm:
         assert TermSchema(**response.json()) == TermSchema(
             **term.model_dump(),
             pronunciations=[
-                PronunciationSchema(**pronunciation.model_dump(), **term.model_dump())
+                PronunciationView(**pronunciation.model_dump())
                 for pronunciation in pronunciations
             ],
         )
@@ -305,7 +304,7 @@ class TestTerm:
         assert len(response.json()) == 0
 
 
-class TestTermPronunciation:
+class TestPronunciation:
     create_pronunciation_route = app.url_path_for('create_pronunciation')
 
     def get_pronunciation_route(
@@ -694,24 +693,6 @@ class TestTermDefinition:
             translation_meaning=db_definition_translation.meaning,
         )
 
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_definition_with_one_translation_field(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermDefinitionFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-        payload.update(
-            {
-                'translation_meaning': 'tester',
-            }
-        )
-
-        response = client.post(
-            self.create_definition_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 400
-
     def test_create_definition_user_is_not_authenticated(
         self, client, generate_payload
     ):
@@ -765,6 +746,24 @@ class TestTermDefinition:
         )
 
         assert response.status_code == 409
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_definition_with_one_translation_field(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermDefinitionFactory)
+        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        payload.update(
+            {
+                'translation_meaning': 'tester',
+            }
+        )
+
+        response = client.post(
+            self.create_definition_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
 
     def test_get_definition(self, client):
         term = TermFactory()
@@ -1222,25 +1221,6 @@ class TestTermExample:
         )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_with_one_translation_field(
-        self, client, generate_payload, token_header
-    ):
-        payload = {
-            **generate_payload(TermExampleFactory),
-            'translation_example': '*test* test test',
-        }
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 400
-        assert response.json() == {
-            'detail': 'all translation attributes need to be setup.'
-        }
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_not_highlighted(
         self, client, generate_payload, token_header
     ):
@@ -1321,6 +1301,22 @@ class TestTermExample:
         )
 
         assert response.status_code == 409
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_with_one_translation_field(
+        self, client, generate_payload, token_header
+    ):
+        payload = {
+            **generate_payload(TermExampleFactory),
+            'translation_example': '*test* test test',
+        }
+        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
 
     def test_get_example(self, client):
         term = TermFactory()

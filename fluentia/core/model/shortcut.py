@@ -28,3 +28,23 @@ def get_or_create_object(Model, session, defaults=None, **kwargs):
             return instance, False
         else:
             return instance, True
+
+
+def create(Model, session, **data):
+    db_model = Model(**data)
+
+    session.add(db_model)
+    session.commit()
+    session.refresh(db_model)
+
+    return db_model
+
+
+def update(session, db_model, **data):
+    for key, value in data.items():
+        setattr(db_model, key, value)
+
+    session.commit()
+    session.refresh(db_model)
+
+    return db_model

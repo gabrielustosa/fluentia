@@ -3,19 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as SQLModelSession
-from sqlmodel import select, tuple_
+from sqlmodel import join, select, tuple_
 
-from fluentia.apps.term import constants, schema
-from fluentia.apps.term.models import (
-    Pronunciation,
-    PronunciationLink,
-    Term,
-    TermDefinition,
-    TermDefinitionTranslation,
-    TermExample,
-    TermExampleTranslation,
-    TermLexical,
-)
+from fluentia.apps.term import constants, models, schema
 from fluentia.apps.user.models import User
 from fluentia.apps.user.security import get_current_admin_user
 from fluentia.core.api.constants import (
@@ -23,7 +13,6 @@ from fluentia.core.api.constants import (
     TERM_NOT_FOUND,
     USER_NOT_AUTHORIZED,
 )
-from fluentia.core.api.query import filter_query
 from fluentia.core.model.shortcut import get_object_or_404, get_or_create_object
 from fluentia.database import get_session
 
@@ -61,17 +50,12 @@ def create_term(
     user: AdminUser,
     session: Session,
 ):
-    db_term = Term(**term_schema.model_dump())
-
     try:
-        session.add(db_term)
-        session.commit()
-        session.refresh(db_term)
+        db_term = models.Term.create(session, **term_schema.model_dump())
     except IntegrityError:
         raise HTTPException(
             status_code=409, detail='term already registered in this language.'
         )
-
     return db_term
 
 
@@ -102,7 +86,7 @@ def get_term(
     ),
 ):
     db_term = get_object_or_404(
-        Term, session=session, term=term, origin_language=origin_language
+        models.Term, session=session, term=term, origin_language=origin_language
     )
     if not translation_language and not lexical and not pronunciation:
         return db_term
@@ -111,57 +95,43 @@ def get_term(
     if translation_language:
         translation_query = (
             select(
-                TermDefinition,
-                TermDefinitionTranslation.meaning,
+                models.TermDefinitionTranslation.meaning,
+            )
+            .select_from(
+                join(
+                    models.TermDefinition,
+                    models.TermDefinitionTranslation,
+                    models.TermDefinition.id
+                    == models.TermDefinitionTranslation.term_definition_id,
+                )
             )
             .where(
-                TermDefinition.term == term,
-                TermDefinition.origin_language == origin_language,
-                TermDefinitionTranslation.language == translation_language,
-            )
-            .join(
-                TermDefinitionTranslation,
-                TermDefinition.id == TermDefinitionTranslation.term_definition_id,
+                models.TermDefinition.term == term,
+                models.TermDefinition.origin_language == origin_language,
+                models.TermDefinitionTranslation.language == translation_language,
             )
         )
         result_query = session.exec(translation_query)
-
         for row in result_query.all():
-            for key, value in row._mapping.items():
-                if key == 'meaning':
-                    meanings_list.append(value)
+            meanings_list.append(row)
 
     lexical_list = []
     if lexical:
-        lexical_query = select(TermLexical).where(
-            TermLexical.term == term,
-            TermLexical.origin_language == origin_language,
-        )
-        result_query = session.exec(lexical_query).all()
         lexical_list.extend(
             [
                 schema.TermLexicalSchema(**lexical.model_dump())
-                for lexical in result_query
+                for lexical in models.TermLexical.list(session, term, origin_language)
             ]
         )
 
     pronunciation_list = []
     if pronunciation:
-        pronunciation_query = select(Pronunciation).where(
-            Pronunciation.id.in_(
-                select(PronunciationLink.pronunciation_id).where(
-                    PronunciationLink.term == term,
-                    PronunciationLink.origin_language == origin_language,
-                )
-            )
-        )
-        result_query = session.exec(pronunciation_query).all()
         pronunciation_list.extend(
             [
-                schema.PronunciationSchema(
-                    **db_term.model_dump(), **pronunciation.model_dump()
+                schema.PronunciationView(**db_pronunciation.model_dump())
+                for db_pronunciation in models.Pronunciation.list(
+                    session, term=term, origin_language=origin_language
                 )
-                for pronunciation in result_query
             ]
         )
 
@@ -187,9 +157,9 @@ def search_term(
     origin_language: constants.Language,
 ):
     return session.exec(
-        select(Term).where(
-            Term.origin_language == origin_language,
-            Term.term.ilike(f'%{text}%'),
+        select(models.Term).where(
+            models.Term.origin_language == origin_language,
+            models.Term.term.ilike(f'%{text}%'),
         )
     )
 
@@ -210,22 +180,23 @@ def search_term_meaning(
 ):
     translation_query = (
         select(
-            TermDefinition.term,
-            TermDefinition.origin_language,
+            models.TermDefinition.term,
+            models.TermDefinition.origin_language,
         )
         .where(
-            TermDefinitionTranslation.meaning.ilike(f'%{text}%'),
-            TermDefinition.origin_language == origin_language,
-            TermDefinitionTranslation.language == translation_language,
+            models.TermDefinitionTranslation.meaning.ilike(f'%{text}%'),
+            models.TermDefinition.origin_language == origin_language,
+            models.TermDefinitionTranslation.language == translation_language,
         )
         .join(
-            TermDefinitionTranslation,
-            TermDefinition.id == TermDefinitionTranslation.term_definition_id,
+            models.TermDefinitionTranslation,
+            models.TermDefinition.id
+            == models.TermDefinitionTranslation.term_definition_id,
         )
     )
     return session.exec(
-        select(Term).where(
-            tuple_(Term.term, Term.origin_language).in_(translation_query)
+        select(models.Term).where(
+            tuple_(models.Term.term, models.Term.origin_language).in_(translation_query)
         )
     )
 
@@ -257,31 +228,29 @@ def create_pronunciation(
     link_values = pronunciation_schema.model_link_dump()
     if 'term' in link_values:
         get_object_or_404(
-            Term,
+            models.Term,
             session=session,
             term=link_values['term'],
             origin_language=link_values['origin_language'],
         )
     elif 'term_example_id' in link_values:
         get_object_or_404(
-            TermExample, session=session, id=link_values['term_example_id']
+            models.TermExample, session=session, id=link_values['term_example_id']
         )
     elif 'term_lexical_id' in link_values:
         get_object_or_404(
-            TermLexical, session=session, id=link_values['term_lexical_id']
+            models.TermLexical, session=session, id=link_values['term_lexical_id']
         )
 
-    db_pronuciation = Pronunciation(**pronunciation_schema.model_dump())
+    db_pronuciation = models.Pronunciation.create(
+        session, **pronunciation_schema.model_dump()
+    )
 
-    session.add(db_pronuciation)
-    session.commit()
-
-    db_link = PronunciationLink(
+    models.PronunciationLink.create(
+        session,
         pronunciation_id=db_pronuciation.id,
         **link_values,
     )
-    session.add(db_link)
-    session.commit()
 
     session.refresh(db_pronuciation)
     return schema.PronunciationView(**db_pronuciation.model_dump())
@@ -299,15 +268,7 @@ def get_pronunciation(
     session: Session,
     pronunciation_schema: schema.PronunciationLinkSchema = Depends(),
 ):
-    return session.exec(
-        select(Pronunciation).where(
-            Pronunciation.id.in_(
-                select(PronunciationLink.pronunciation_id).filter_by(
-                    **pronunciation_schema.model_link_dump()
-                )
-            )
-        )
-    )
+    return models.Pronunciation.list(session, **pronunciation_schema.model_dump())
 
 
 @term_router.patch(
@@ -330,18 +291,16 @@ def update_pronunciation(
     pronunciation_schema: schema.TermPronunciationUpdate,
 ):
     db_pronunciation = get_object_or_404(
-        Pronunciation, session=session, id=pronunciation_id
+        models.Pronunciation, session=session, id=pronunciation_id
     )
 
-    for key, value in pronunciation_schema.model_dump(
-        exclude_unset=True,
-    ).items():
-        setattr(db_pronunciation, key, value)
-
-    session.commit()
-    session.refresh(db_pronunciation)
-
-    return db_pronunciation
+    return models.Pronunciation.update(
+        session,
+        db_pronunciation,
+        **pronunciation_schema.model_dump(
+            exclude_unset=True,
+        ),
+    )
 
 
 @term_router.post(
@@ -383,14 +342,14 @@ def create_definition(
     definition_schema: schema.TermDefinitionSchema,
 ):
     get_object_or_404(
-        Term,
+        models.Term,
         session=session,
         term=definition_schema.term,
         origin_language=definition_schema.origin_language,
     )
 
     db_definition, _ = get_or_create_object(
-        TermDefinition,
+        models.TermDefinition,
         session=session,
         defaults=definition_schema.model_dump(
             include={'term_level'}, exclude_unset=True
@@ -402,23 +361,14 @@ def create_definition(
     if not any(translation_values):
         return db_definition
 
-    if not all(translation_values):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='all translation attributes need to be setup.',
-        )
-
-    db_definition_translation = TermDefinitionTranslation(
-        translation=definition_schema.translation_definition,
-        language=definition_schema.translation_language,
-        meaning=definition_schema.translation_meaning,
-        term_definition_id=db_definition.id,
-    )
-
     try:
-        session.add(db_definition_translation)
-        session.commit()
-        session.refresh(db_definition_translation)
+        db_definition_translation = models.TermDefinitionTranslation.create(
+            session=session,
+            translation=definition_schema.translation_definition,
+            language=definition_schema.translation_language,
+            meaning=definition_schema.translation_meaning,
+            term_definition_id=db_definition.id,
+        )
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -458,49 +408,29 @@ def get_definition(
     ),
 ):
     if translation_language is None:
-        query_definition = (
-            select(TermDefinition).where(
-                TermDefinition.term == term,
-                TermDefinition.origin_language == origin_language,
+        return models.TermDefinition.list(
+            session, term, origin_language, part_of_speech, term_level
+        )
+
+    definition_list = []
+    for row in models.TermDefinition.list(
+        session,
+        term,
+        origin_language,
+        part_of_speech,
+        term_level,
+        translation_language,
+    ).all():
+        db_definition, db_definition_translation = row
+        definition_list.append(
+            schema.TermDefinitionView(
+                **db_definition.model_dump(),
+                translation_language=db_definition_translation.language,
+                translation_definition=db_definition_translation.translation,
+                translation_meaning=db_definition_translation.meaning,
             )
-        ).filter_by(**filter_query(['part_of_speech', 'term_level'], locals()))
-        return session.exec(query_definition)
-
-    query_definition = (
-        select(
-            TermDefinition,
-            TermDefinitionTranslation.language,
-            TermDefinitionTranslation.translation,
-            TermDefinitionTranslation.meaning,
         )
-        .where(
-            TermDefinition.term == term,
-            TermDefinition.origin_language == origin_language,
-            TermDefinitionTranslation.language == translation_language,
-        )
-        .filter_by(**filter_query(['part_of_speech', 'term_level'], locals()))
-        .join(
-            TermDefinitionTranslation,
-            TermDefinition.id == TermDefinitionTranslation.term_definition_id,
-        )
-    )
-
-    result_query = session.exec(query_definition)
-
-    result_list = []
-    for row in result_query.all():
-        schema_dict = {}
-        for key, value in row._mapping.items():
-            if key == 'TermDefinition':
-                schema_dict.update(**value.model_dump())
-            elif key == 'language':
-                schema_dict.update(translation_language=value)
-            elif key == 'translation':
-                schema_dict.update(translation_definition=value)
-            elif key == 'meaning':
-                schema_dict.update(translation_meaning=value)
-        result_list.append(schema_dict)
-    return [schema.TermDefinitionView(**result) for result in result_list]
+    return definition_list
 
 
 @term_router.patch(
@@ -526,34 +456,32 @@ def update_definition(
         description='Irá modificar a definição para a tradução especificada',
     ),
 ):
-    db_definition = get_object_or_404(TermDefinition, session, id=definition_id)
+    db_definition = get_object_or_404(models.TermDefinition, session, id=definition_id)
 
     if translation_language is None:
-        for key, value in definition_schema.model_dump(
-            exclude_unset=True,
-        ).items():
-            setattr(db_definition, key, value)
-
-        session.commit()
-        session.refresh(db_definition)
-
-        return db_definition
+        return models.TermDefinition.update(
+            session,
+            db_definition,
+            **definition_schema.model_dump(
+                exclude_unset=True,
+            ),
+        )
 
     db_definition_translation = get_object_or_404(
-        TermDefinitionTranslation,
+        models.TermDefinitionTranslation,
         session,
         term_definition_id=db_definition.id,
         language=translation_language,
     )
+
     translation_meaning = getattr(definition_schema, 'translation_meaning', None)
     translation_definition = getattr(definition_schema, 'translation_definition', None)
-    if translation_meaning:
-        db_definition_translation.meaning = translation_meaning
-    if translation_definition:
-        db_definition_translation.translation = translation_definition
-
-    session.commit()
-    session.refresh(db_definition_translation)
+    models.TermDefinitionTranslation.update(
+        session,
+        db_definition_translation,
+        meaning=translation_meaning,
+        translation=translation_definition,
+    )
 
     session.refresh(db_definition)
     return schema.TermDefinitionView(
@@ -570,16 +498,6 @@ def update_definition(
     response_model=schema.TermExampleView,
     response_description='Criação de um exemplo para determinado termo ou definição.',
     responses={
-        400: {
-            'description': 'Todos os atributos da tradução precisam estar setados.',
-            'content': {
-                'application/json': {
-                    'example': {
-                        'detail': 'all translation attributes need to be setup.'
-                    }
-                }
-            },
-        },
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,
@@ -601,41 +519,31 @@ def create_example(
     user: AdminUser, session: Session, example_schema: schema.TermExampleSchema
 ):
     get_object_or_404(
-        Term,
+        models.Term,
         session=session,
         term=example_schema.term,
         origin_language=example_schema.origin_language,
     )
 
     db_example, _ = get_or_create_object(
-        TermExample,
+        models.TermExample,
         session=session,
         defaults=example_schema.model_dump(
             include={'term_definition_id'}, exclude_unset=True
         ),
         **example_schema.model_dump(exclude={'term_definition_id'}),
     )
-
     translation_attributes = example_schema.model_dump_translation().values()
     if not any(translation_attributes):
         return db_example
 
-    if not all(translation_attributes):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='all translation attributes need to be setup.',
-        )
-
-    db_example_translation = TermExampleTranslation(
-        translation=example_schema.translation_example,
-        language=example_schema.translation_language,
-        term_example_id=db_example.id,
-    )
-
     try:
-        session.add(db_example_translation)
-        session.commit()
-        session.refresh(db_example_translation)
+        db_example_translation = models.TermExampleTranslation.create(
+            session,
+            language=example_schema.translation_language,
+            term_example_id=db_example.id,
+            translation=example_schema.translation_example,
+        )
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -646,7 +554,7 @@ def create_example(
     return schema.TermExampleView(
         **db_example.model_dump(),
         translation_language=db_example_translation.language,
-        translation_example=db_example.example,
+        translation_example=db_example_translation.translation,
     )
 
 
@@ -672,44 +580,23 @@ def get_example(
     ),
 ):
     if translation_language is None:
-        query_example = select(TermExample).where(
-            TermExample.term == term,
-            TermExample.origin_language == origin_language,
-            TermExample.term_definition_id == term_definition_id,
+        return models.TermExample.list(
+            session, term, origin_language, term_definition_id
         )
-        return session.exec(query_example)
 
-    query_example = (
-        select(
-            TermExample,
-            TermExampleTranslation.language,
-            TermExampleTranslation.translation,
+    example_list = []
+    for row in models.TermExample.list(
+        session, term, origin_language, term_definition_id, translation_language
+    ):
+        db_example, db_example_translation = row
+        example_list.append(
+            schema.TermExampleView(
+                **db_example.model_dump(),
+                translation_language=db_example_translation.language,
+                translation_example=db_example_translation.translation,
+            )
         )
-        .join(
-            TermExampleTranslation,
-            TermExample.id == TermExampleTranslation.term_example_id,
-        )
-        .where(
-            TermExampleTranslation.language == translation_language,
-            TermExample.term == term,
-            TermExample.origin_language == origin_language,
-            TermExample.term_definition_id == term_definition_id,
-        )
-    )
-    result_query = session.exec(query_example)
-
-    result_list = []
-    for row in result_query.all():
-        schema_dict = {}
-        for key, value in row._mapping.items():
-            if key == 'TermExample':
-                schema_dict.update(**value.model_dump())
-            elif key == 'language':
-                schema_dict.update(translation_language=value)
-            elif key == 'translation':
-                schema_dict.update(translation_example=value)
-        result_list.append(schema_dict)
-    return [schema.TermExampleView(**result) for result in result_list]
+    return example_list
 
 
 @term_router.patch(
@@ -735,30 +622,24 @@ def update_example(
         description='Irá modificar o exemplo para a tradução especificada',
     ),
 ):
-    db_example = get_object_or_404(TermExample, session, id=example_id)
+    db_example = get_object_or_404(models.TermExample, session, id=example_id)
 
     if translation_language is None:
-        example = getattr(example_schema, 'example', None)
-        if example:
-            db_example.example = example
-
-        session.commit()
-        session.refresh(db_example)
-
-        return db_example
+        return models.TermExample.update(
+            session, db_example, example=example_schema.example
+        )
 
     db_example_translation = get_object_or_404(
-        TermExampleTranslation,
+        models.TermExampleTranslation,
         session,
         term_example_id=db_example.id,
         language=translation_language,
     )
     translation_example = getattr(example_schema, 'translation_example', None)
     if translation_example:
-        db_example_translation.translation = translation_example
-
-    session.commit()
-    session.refresh(db_example_translation)
+        models.TermExampleTranslation.update(
+            session, db_example_translation, translation=translation_example
+        )
 
     session.refresh(db_example)
     return schema.TermExampleView(
@@ -785,19 +666,13 @@ def create_lexical(
     lexical_schema: schema.TermLexicalSchema, session: Session, user: AdminUser
 ):
     get_object_or_404(
-        Term,
+        models.Term,
         session=session,
         term=lexical_schema.term,
         origin_language=lexical_schema.origin_language,
     )
 
-    db_lexical = TermLexical(**lexical_schema.model_dump())
-
-    session.add(db_lexical)
-    session.commit()
-    session.refresh(db_lexical)
-
-    return db_lexical
+    return models.TermLexical.create(session, **lexical_schema.model_dump())
 
 
 @term_router.get(
@@ -808,15 +683,9 @@ def create_lexical(
     description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
 def get_lexical(
+    session: Session,
     term: str,
     origin_language: constants.Language,
     type: constants.TermLexicalType,
-    session: Session,
 ):
-    return session.exec(
-        select(TermLexical).where(
-            TermLexical.term == term,
-            TermLexical.origin_language == origin_language,
-            TermLexical.type == type.lower(),
-        )
-    )
+    return models.TermLexical.list(session, term, origin_language, type)

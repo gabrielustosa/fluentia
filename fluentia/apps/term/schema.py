@@ -16,7 +16,7 @@ class TermSchema(TermSchemaBase):
         examples=[['house', 'place']], default_factory=list
     )
     lexical: list['TermLexicalSchema'] | None = Field(default_factory=list)
-    pronunciations: list['PronunciationSchema'] | None = Field(default_factory=list)
+    pronunciations: list['PronunciationView'] | None = Field(default_factory=list)
 
 
 class PronunciationLinkSchema(BaseModel):
@@ -108,6 +108,16 @@ class TermDefinitionSchema(TermSchemaBase):
         'translation_meaning',
     }
 
+    @model_validator(mode='before')
+    def pre_validate(cls, values):
+        if isinstance(values, dict):
+            translation_attributes = [
+                values.get(attr) for attr in cls.translation_attributes
+            ]
+            if any(translation_attributes) and not all(translation_attributes):
+                raise ValueError('all translation attributes need to be setup.')
+        return values
+
     def model_dump(self, *args, **kwargs):
         exclude = kwargs.pop('exclude', {})
         return super().model_dump(
@@ -162,6 +172,16 @@ class TermExampleSchema(TermSchemaBase):
         'translation_language',
         'translation_example',
     }
+
+    @model_validator(mode='before')
+    def pre_validate(cls, values):
+        if isinstance(values, dict):
+            translation_attributes = [
+                values.get(attr) for attr in cls.translation_attributes
+            ]
+            if any(translation_attributes) and not all(translation_attributes):
+                raise ValueError('all translation attributes need to be setup.')
+        return values
 
     @field_validator('translation_example', 'example')
     @classmethod
