@@ -18,7 +18,6 @@ from fluentia.apps.term.models import (
     TermLexical,
 )
 from fluentia.apps.term.schema import (
-    PronunciationSchema,
     PronunciationView,
     TermDefinitionView,
     TermExampleView,
@@ -1170,6 +1169,27 @@ class TestTermExample:
 
         assert response.status_code == 201
         assert response.json()['term_definition_id'] == definition.id
+        assert_json_response(
+            session, TermExample, response.json(), id=response.json()['id']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_with_term_lexical_id(
+        self, session, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleFactory)
+        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        lexical = TermLexicalFactory(
+            term=payload['term'], origin_language=payload['origin_language']
+        )
+        payload['term_lexical_id'] = lexical.id
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        assert response.json()['term_lexical_id'] == lexical.id
         assert_json_response(
             session, TermExample, response.json(), id=response.json()['id']
         )

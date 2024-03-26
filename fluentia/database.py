@@ -3,7 +3,7 @@ from sqlmodel import Session
 
 from fluentia.settings import Settings
 
-engine = create_engine(Settings().DATABASE_URL)
+engine = create_engine(Settings().database_url('fluentia'))
 
 
 def get_session():

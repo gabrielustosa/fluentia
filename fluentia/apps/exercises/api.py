@@ -40,7 +40,6 @@ def get_exercises(
     term_level: TermLevel | None = Query(
         default=None, description='Filtar por dificuldade do termo.'
     ),
-    translation_language: Language | None = None,
     cardset_id: int | None = Query(
         default=None, description='Filtrar por conjunto de cartas.'
     ),
@@ -99,7 +98,7 @@ def listen_sentence(example_id: int):
     summary='Exercício sobre pronúnciação de termos.',
     description='Endpoint que retorna um link para enviar a pronúncia em forma de aúdio de um usuário sobre um termo.',
 )
-def speak_term(term: str, origin_language: Language):
+def speak_term(term: str, origin_language: Language, audio: UploadFile):
     pass
 
 
@@ -112,20 +111,7 @@ def speak_term(term: str, origin_language: Language):
     summary='Exercício sobre pronúnciação de termos.',
     description='Endpoint que retorna um link para enviar a pronúncia em forma de aúdio de um usuário sobre um termo.',
 )
-def speak_sentence(example_id: int):
-    pass
-
-
-@exercise_router.post(
-    path='/speak/check/{exercise_speak_id}',
-    status_code=200,
-    response_model=schema.SpeakCheckSchema,
-    response_description='Porcentagem de acerto de prónuncia do texto selecionado.',
-    responses={401: USER_NOT_AUTHORIZED, 404: TERM_NOT_FOUND},
-    summary='Verificar acerto de pronúncia de texto.',
-    description='Endpoint que faz uma verificação de pronúncia através do envio do arquivo do aúdio e faz a comparação com o texto requerido.',
-)
-def speak_check(exercise_speak_id: int, audio: UploadFile):
+def speak_sentence(example_id: int, audio: UploadFile):
     pass
 
 

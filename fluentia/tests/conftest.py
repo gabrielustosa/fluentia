@@ -6,6 +6,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from fluentia.apps.user.security import get_password_hash
 from fluentia.database import get_session
 from fluentia.main import app
+from fluentia.settings import Settings
 from fluentia.tests.factories.user import UserFactory
 
 
@@ -22,11 +23,16 @@ def client(session):
 
 
 @pytest.fixture
-def session():
-    engine = create_engine(
-        'sqlite:///tests.db',
-    )
+def engine():
+    engine = create_engine(Settings().database_url('fluentia_test'))
     SQLModel.metadata.create_all(engine)
+    yield engine
+    SQLModel.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def session(engine):
     session = Session(engine)
 
     def set_session(cls):
@@ -35,8 +41,10 @@ def session():
             set_session(factory)
 
     set_session(SQLAlchemyModelFactory)
+    session.begin()
     yield session
-    SQLModel.metadata.drop_all(engine)
+    session.rollback()
+    session.close()
 
 
 @pytest.fixture

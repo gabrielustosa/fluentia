@@ -34,13 +34,6 @@ class ListenSchema(BaseModel):
 
 
 class SpeakSchema(BaseModel):
-    connection_url: str = Field(
-        examples=['https://example.com/speak/check/123'],
-        description='Usada para coletar a url que recebera a pronúncia e irá avalia-la.',
-    )
-
-
-class SpeakCheckSchema(BaseModel):
     correct_percentage: float = Field(examples=['75.7'])
 
 

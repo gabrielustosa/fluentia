@@ -309,16 +309,6 @@ def update_pronunciation(
     response_model=schema.TermDefinitionView,
     response_description='A criação da definição do termo especificado.',
     responses={
-        400: {
-            'description': 'Todos os atributos da tradução precisam estar setados.',
-            'content': {
-                'application/json': {
-                    'example': {
-                        'detail': 'all translation attributes need to be setup.'
-                    }
-                }
-            },
-        },
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,

@@ -1,17 +1,29 @@
-from sqlmodel import Field, SQLModel, select
+from sqlalchemy.event import listens_for
+from sqlmodel import (
+    Field,
+    ForeignKeyConstraint,
+    Session,
+    SQLModel,
+    UniqueConstraint,
+    select,
+)
 
+from fluentia.apps.exercises.constants import ExerciseType
+from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term.constants import (
     Language,
     PartOfSpeech,
     TermLevel,
     TermLexicalType,
 )
-from fluentia.core.model.shortcut import create, update
+from fluentia.core.model.shortcut import create, get_or_create_object, update
 
 
 class Term(SQLModel, table=True):
     term: str = Field(primary_key=True)
     origin_language: Language = Field(primary_key=True)
+
+    __table_args__ = (UniqueConstraint('term', 'origin_language'),)
 
     @staticmethod
     def create(session, **data):
@@ -20,10 +32,18 @@ class Term(SQLModel, table=True):
 
 class TermLexical(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str = Field(foreign_key='term.term')
-    origin_language: Language = Field(foreign_key='term.origin_language')
+    term: str
+    origin_language: Language
     value: str
     type: TermLexicalType
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+    )
 
     @staticmethod
     def create(session, **data):
@@ -73,17 +93,33 @@ class Pronunciation(SQLModel, table=True):
 
 
 class PronunciationLink(SQLModel, table=True):
-    id: int = Field(primary_key=True)
-    pronunciation_id: int = Field(foreign_key='pronunciation.id', unique=True)
-    term: str = Field(foreign_key='term.term', nullable=True, default=None)
-    origin_language: Language = Field(
-        foreign_key='term.origin_language', nullable=True, default=None
-    )
-    term_example_id: int = Field(
-        foreign_key='termexample.id', nullable=True, default=None
-    )
-    term_lexical_id: int = Field(
-        foreign_key='termlexical.id', nullable=True, default=None
+    pronunciation_id: int = Field(primary_key=True)
+    term: str | None = None
+    origin_language: Language | None = None
+    term_example_id: int | None = None
+    term_lexical_id: int | None = None
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['pronunciation_id'],
+            ['pronunciation.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_example_id'],
+            ['termexample.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_lexical_id'],
+            ['termlexical.id'],
+            ondelete='CASCADE',
+        ),
     )
 
     @staticmethod
@@ -93,11 +129,19 @@ class PronunciationLink(SQLModel, table=True):
 
 class TermDefinition(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str = Field(foreign_key='term.term')
-    origin_language: Language = Field(foreign_key='term.origin_language')
+    term: str
+    origin_language: Language
     term_level: TermLevel | None = None
     part_of_speech: PartOfSpeech
     definition: str
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+    )
 
     @staticmethod
     def list(
@@ -132,15 +176,29 @@ class TermDefinition(SQLModel, table=True):
         return session.exec(query_definition)
 
     @staticmethod
+    def get(session, id):
+        return session.exec(
+            select(TermDefinition).where(TermDefinition.id == id)
+        ).first()
+
+    @staticmethod
     def update(session, db_definition, **data):
         return update(session, db_definition, **data)
 
 
 class TermDefinitionTranslation(SQLModel, table=True):
     language: Language = Field(primary_key=True)
-    term_definition_id: int = Field(foreign_key='termdefinition.id', primary_key=True)
+    term_definition_id: int = Field(primary_key=True)
     translation: str
     meaning: str
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term_definition_id'],
+            ['termdefinition.id'],
+            ondelete='CASCADE',
+        ),
+    )
 
     @staticmethod
     def create(session, **data):
@@ -185,16 +243,37 @@ class TermDefinitionTranslation(SQLModel, table=True):
 
 class TermExample(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str = Field(foreign_key='term.term')
-    origin_language: Language = Field(foreign_key='term.origin_language')
-    term_definition_id: int | None = Field(
-        foreign_key='termdefinition.id', nullable=True, default=None
-    )
+    term: str
+    origin_language: Language
+    term_definition_id: int | None = None
+    term_lexical_id: int | None = Field(foreign_key='termlexical.id', default=None)
     example: str
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_definition_id'],
+            ['termdefinition.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_lexical_id'],
+            ['termlexical.id'],
+            ondelete='CASCADE',
+        ),
+    )
 
     @staticmethod
     def list(
-        session, term, origin_language, term_definition_id, translation_language=None
+        session,
+        term,
+        origin_language,
+        term_definition_id=None,
+        translation_language=None,
     ):
         query_example = select(TermExample).where(
             TermExample.term == term,
@@ -237,3 +316,32 @@ class TermExampleTranslation(SQLModel, table=True):
     @staticmethod
     def update(session, db_example, **data):
         return update(session, db_example, **data)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term_example_id'],
+            ['termexample.id'],
+            ondelete='CASCADE',
+        ),
+    )
+
+
+@listens_for(TermExample, 'after_insert')
+def insert_write_exercise(mapper, connection, target):
+    session = Session(connection)
+
+    get_or_create_object(
+        Exercise,
+        session,
+        term=target.term,
+        origin_language=target.origin_language,
+        term_example_id=target.id,
+        term_definition_id=target.term_definition_id,
+        type=ExerciseType.WRITE_SENTENCE,
+    )
+
+
+# @listens_for(PronunciationLink, 'after_insert')
+# @listens_for(PronunciationLink, 'after_update')
+# def insert_listen_exercise(mapper, connection, target):
+#     session = Session(connection)

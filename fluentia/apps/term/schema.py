@@ -34,20 +34,23 @@ class PronunciationLinkSchema(BaseModel):
 
     @model_validator(mode='before')
     def pre_validation(cls, values):
-        valid_values = dict(filter(lambda item: item[1] is not None, values.items()))
-        attr = [valid_values.get(field) for field in cls.link_fields]
-        link_attr = sum(x is not None for x in attr)
-        if link_attr == 0:
-            raise ValueError('you need to provide at least one object to link.')
-        elif 'term' in valid_values:
-            if 'origin_language' not in valid_values:
-                raise ValueError(
-                    'you need to provide term and origin_language attributes.'
-                )
-            if link_attr > 2:
+        if isinstance(values, dict):
+            valid_values = dict(
+                filter(lambda item: item[1] is not None, values.items())
+            )
+            attr = [valid_values.get(field) for field in cls.link_fields]
+            link_attr = sum(x is not None for x in attr)
+            if link_attr == 0:
+                raise ValueError('you need to provide at least one object to link.')
+            elif 'term' in valid_values:
+                if 'origin_language' not in valid_values:
+                    raise ValueError(
+                        'you need to provide term and origin_language attributes.'
+                    )
+                if link_attr > 2:
+                    raise ValueError('you cannot reference two objects at once.')
+            elif link_attr > 1:
                 raise ValueError('you cannot reference two objects at once.')
-        elif link_attr > 1:
-            raise ValueError('you cannot reference two objects at once.')
         return values
 
     def model_link_dump(self):
@@ -157,6 +160,7 @@ class TermDefinitionSchemaUpdate(BaseModel):
 
 class TermExampleSchema(TermSchemaBase):
     term_definition_id: int | None = None
+    term_lexical_id: int | None = None
     example: str = Field(
         examples=["Yesterday a have lunch in my mother's *house*."],
         description="O termo referido do exemplo será circulado pelos caracteres '*'.",
@@ -176,8 +180,11 @@ class TermExampleSchema(TermSchemaBase):
     @model_validator(mode='before')
     def pre_validate(cls, values):
         if isinstance(values, dict):
+            valid_values = dict(
+                filter(lambda item: item[1] is not None, values.items())
+            )
             translation_attributes = [
-                values.get(attr) for attr in cls.translation_attributes
+                valid_values.get(attr) for attr in cls.translation_attributes
             ]
             if any(translation_attributes) and not all(translation_attributes):
                 raise ValueError('all translation attributes need to be setup.')
@@ -198,7 +205,9 @@ class TermExampleSchema(TermSchemaBase):
 
     def model_dump_translation(self, *args, **kwargs):
         include = kwargs.pop('include', {})
-        return super().model_dump(include={*self.translation_attributes, *include})
+        return super().model_dump(
+            *args, **kwargs, include={*self.translation_attributes, *include}
+        )
 
 
 class TermExampleView(TermExampleSchema):

@@ -24,7 +24,7 @@ def get_or_create_object(Model, session, defaults=None, **kwargs):
             session.commit()
         except Exception:
             session.rollback()
-            instance = session.exec(select(Model).filter_by(**kwargs).one())
+            instance = session.exec(select(Model).filter_by(**kwargs)).one()
             return instance, False
         else:
             return instance, True

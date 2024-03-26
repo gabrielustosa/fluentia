@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, ForeignKeyConstraint, SQLModel
+
+from fluentia.apps.term.constants import Language
 
 
 class CardSet(SQLModel, table=True):
@@ -19,5 +21,13 @@ class Card(SQLModel, table=True):
     created: datetime = Field(default_factory=datetime.utcnow)
     modified: datetime = Field(nullable=True, default=None)
     note: str | None = None
-    term: str = Field(foreign_key='term.term')
-    origin_language: str = Field(foreign_key='term.origin_language')
+    term: str
+    origin_language: Language
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+    )

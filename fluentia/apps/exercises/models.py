@@ -1,27 +1,53 @@
 from datetime import datetime
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, ForeignKeyConstraint, SQLModel
+
+from fluentia.apps.exercises.constants import ExerciseType
+from fluentia.apps.term.constants import Language
 
 
 class Exercise(SQLModel, table=True):
-    term: str = Field(primary_key=True, foreign_key='term.term')
-    origin_language: str = Field(primary_key=True, foreign_key='term.origin_language')
-    term_level: str = Field(primary_key=True)
-    type: str = Field(primary_key=True)
-
-
-class ExerciseSpeak(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    user_id: int = Field(foreign_key='user.id')
-    text: str | None = None
+    term: str
+    origin_language: Language
+    term_definition_id: int | None = None
+    term_example_id: int | None = None
+    pronunciation_id: int | None = None
+    term_lexical_id: int | None = None
+    type: ExerciseType
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_definition_id'],
+            ['termdefinition.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_example_id'],
+            ['termexample.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['pronunciation_id'],
+            ['pronunciation.id'],
+            ondelete='CASCADE',
+        ),
+        ForeignKeyConstraint(
+            ['term_lexical_id'],
+            ['termlexical.id'],
+            ondelete='CASCADE',
+        ),
+    )
 
 
 class ExerciseHistory(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str = Field(foreign_key='exercise.term')
-    origin_language: str = Field(foreign_key='exercise.origin_language')
-    term_level: str = Field(foreign_key='exercise.term_level')
-    type: str = Field(foreign_key='exercise.type')
+    exercise_id: int = Field(foreign_key='exercise.id')
     user_id: int = Field(foreign_key='user.id')
     created: datetime = Field(default_factory=datetime.utcnow)
     correct: bool
