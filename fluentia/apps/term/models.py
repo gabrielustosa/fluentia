@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy.event import listens_for
 from sqlmodel import (
     Field,
@@ -5,6 +6,7 @@ from sqlmodel import (
     Session,
     SQLModel,
     UniqueConstraint,
+    func,
     select,
 )
 
@@ -26,8 +28,36 @@ class Term(SQLModel, table=True):
     __table_args__ = (UniqueConstraint('term', 'origin_language'),)
 
     @staticmethod
-    def create(session, **data):
-        return create(Term, session, **data)
+    def get(session, term, origin_language):
+        return session.exec(
+            select(Term).where(
+                func.clean_text(Term.term) == func.clean_text(term),
+                Term.origin_language == origin_language,
+            )
+        ).first()
+
+    @staticmethod
+    def get_or_404(session, term, origin_language):
+        obj = Term.get(session, term, origin_language)
+        if obj is None:
+            raise HTTPException(status_code=404, detail='term was not found.')
+        return obj
+
+    @staticmethod
+    def get_or_create(session, **data):
+        obj = Term.get(session, **data)
+        if obj is not None:
+            return obj, False
+        return create(Term, session, **data), True
+
+    @staticmethod
+    def search(session, text, origin_language):
+        return session.exec(
+            select(Term).where(
+                Term.origin_language == origin_language,
+                func.clean_text(Term.term).like('%' + func.clean_text(text) + '%'),
+            )
+        )
 
 
 class TermLexical(SQLModel, table=True):
@@ -56,7 +86,7 @@ class TermLexical(SQLModel, table=True):
             filters.add(TermLexical.type == type.lower())
         return session.exec(
             select(TermLexical).where(
-                TermLexical.term == term,
+                func.clean_text(TermLexical.term) == func.clean_text(term),
                 TermLexical.origin_language == origin_language,
                 *filters,
             )
@@ -81,12 +111,18 @@ class Pronunciation(SQLModel, table=True):
 
     @staticmethod
     def list(session, **link_attributes):
+        filter_term = set()
+        term = link_attributes.pop('term')
+        if term:
+            filter_term.add(
+                func.clean_text(PronunciationLink.term) == func.clean_text(term)
+            )
         return session.exec(
             select(Pronunciation).where(
                 Pronunciation.id.in_(
-                    select(PronunciationLink.pronunciation_id).filter_by(
-                        **link_attributes
-                    )
+                    select(PronunciationLink.pronunciation_id)
+                    .filter_by(**link_attributes)
+                    .where(*filter_term)
                 )
             )
         ).all()
@@ -169,7 +205,7 @@ class TermDefinition(SQLModel, table=True):
             filters.add(TermDefinition.part_of_speech == part_of_speech)
 
         query_definition = select(TermDefinition).where(
-            TermDefinition.term == term,
+            func.clean_text(TermDefinition.term) == func.clean_text(term),
             TermDefinition.origin_language == origin_language,
             *filters,
         )
@@ -228,14 +264,14 @@ class TermDefinitionTranslation(SQLModel, table=True):
                 TermDefinitionTranslation,
             )
             .where(
-                TermDefinition.term == term,
+                func.clean_text(TermDefinition.term) == func.clean_text(term),
                 TermDefinition.origin_language == origin_language,
                 TermDefinitionTranslation.language == translation_language,
                 *filters,
             )
             .join(
                 TermDefinitionTranslation,
-                TermDefinition.id == TermDefinitionTranslation.term_definition_id,
+                TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
             )
         )
         return session.exec(query_translation)
@@ -276,7 +312,7 @@ class TermExample(SQLModel, table=True):
         translation_language=None,
     ):
         query_example = select(TermExample).where(
-            TermExample.term == term,
+            func.clean_text(TermExample.term) == func.clean_text(term),
             TermExample.origin_language == origin_language,
             TermExample.term_definition_id == term_definition_id,
         )
@@ -288,11 +324,11 @@ class TermExample(SQLModel, table=True):
                 )
                 .join(
                     TermExampleTranslation,
-                    TermExample.id == TermExampleTranslation.term_example_id,
+                    TermExample.id == TermExampleTranslation.term_example_id,  # pyright: ignore[reportArgumentType]
                 )
                 .where(
                     TermExampleTranslation.language == translation_language,
-                    TermExample.term == term,
+                    func.clean_text(TermExample.term) == func.clean_text(term),
                     TermExample.origin_language == origin_language,
                     TermExample.term_definition_id == term_definition_id,
                 )

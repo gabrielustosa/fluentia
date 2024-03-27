@@ -1,9 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as SQLModelSession
-from sqlmodel import join, select, tuple_
+from sqlmodel import func, join, select, tuple_
 
 from fluentia.apps.term import constants, models, schema
 from fluentia.apps.user.models import User
@@ -28,16 +29,16 @@ AdminUser = Annotated[User, Depends(get_current_admin_user)]
     response_model=schema.TermSchemaBase,
     response_description='O termo criado é retornado.',
     responses={
-        401: USER_NOT_AUTHORIZED,
-        403: NOT_ENOUGH_PERMISSION,
-        409: {
-            'description': 'O termo enviado já existe nesta linguagem.',
+        200: {
+            'description': 'O termo enviado já existe nesta linguagem, por esse motivo ele foi retornado.',
             'content': {
                 'application/json': {
-                    'example': {'detail': 'term already registered in this language.'}
+                    'example': {'term': 'Casa', 'origin_language': 'pt'}
                 }
             },
         },
+        401: USER_NOT_AUTHORIZED,
+        403: NOT_ENOUGH_PERMISSION,
     },
     summary='Criação de um novo termo.',
     description="""
@@ -50,13 +51,12 @@ def create_term(
     user: AdminUser,
     session: Session,
 ):
-    try:
-        db_term = models.Term.create(session, **term_schema.model_dump())
-    except IntegrityError:
-        raise HTTPException(
-            status_code=409, detail='term already registered in this language.'
+    obj, created = models.Term.get_or_create(session, **term_schema.model_dump())
+    if created:
+        return JSONResponse(
+            content=obj.model_dump(), status_code=status.HTTP_201_CREATED
         )
-    return db_term
+    return JSONResponse(content=obj.model_dump(), status_code=status.HTTP_200_OK)
 
 
 @term_router.get(
@@ -85,9 +85,10 @@ def get_term(
         description='Caso seja verdadeiro, as pronúncias do termo serão incluídos na resposta.',
     ),
 ):
-    db_term = get_object_or_404(
-        models.Term, session=session, term=term, origin_language=origin_language
+    db_term = models.Term.get_or_404(
+        session=session, term=term, origin_language=origin_language
     )
+
     if not translation_language and not lexical and not pronunciation:
         return db_term
 
@@ -102,7 +103,7 @@ def get_term(
                     models.TermDefinition,
                     models.TermDefinitionTranslation,
                     models.TermDefinition.id
-                    == models.TermDefinitionTranslation.term_definition_id,
+                    == models.TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
                 )
             )
             .where(
@@ -156,12 +157,7 @@ def search_term(
     text: str,
     origin_language: constants.Language,
 ):
-    return session.exec(
-        select(models.Term).where(
-            models.Term.origin_language == origin_language,
-            models.Term.term.ilike(f'%{text}%'),
-        )
-    )
+    return models.Term.search(session, text, origin_language)
 
 
 @term_router.get(
@@ -184,14 +180,16 @@ def search_term_meaning(
             models.TermDefinition.origin_language,
         )
         .where(
-            models.TermDefinitionTranslation.meaning.ilike(f'%{text}%'),
+            func.clean_text(models.TermDefinitionTranslation.meaning).like(
+                '%' + func.clean_text(text) + '%'
+            ),
             models.TermDefinition.origin_language == origin_language,
             models.TermDefinitionTranslation.language == translation_language,
         )
         .join(
             models.TermDefinitionTranslation,
             models.TermDefinition.id
-            == models.TermDefinitionTranslation.term_definition_id,
+            == models.TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
         )
     )
     return session.exec(
@@ -227,8 +225,7 @@ def create_pronunciation(
 ):
     link_values = pronunciation_schema.model_link_dump()
     if 'term' in link_values:
-        get_object_or_404(
-            models.Term,
+        models.Term.get_or_404(
             session=session,
             term=link_values['term'],
             origin_language=link_values['origin_language'],
@@ -331,9 +328,8 @@ def create_definition(
     user: AdminUser,
     definition_schema: schema.TermDefinitionSchema,
 ):
-    get_object_or_404(
-        models.Term,
-        session=session,
+    models.Term.get_or_404(
+        session,
         term=definition_schema.term,
         origin_language=definition_schema.origin_language,
     )
@@ -508,8 +504,7 @@ def update_definition(
 def create_example(
     user: AdminUser, session: Session, example_schema: schema.TermExampleSchema
 ):
-    get_object_or_404(
-        models.Term,
+    models.Term.get_or_404(
         session=session,
         term=example_schema.term,
         origin_language=example_schema.origin_language,
@@ -655,8 +650,7 @@ def update_example(
 def create_lexical(
     lexical_schema: schema.TermLexicalSchema, session: Session, user: AdminUser
 ):
-    get_object_or_404(
-        models.Term,
+    models.Term.get_or_404(
         session=session,
         term=lexical_schema.term,
         origin_language=lexical_schema.origin_language,
