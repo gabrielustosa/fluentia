@@ -14,7 +14,7 @@ from fluentia.core.api.constants import (
     TERM_NOT_FOUND,
     USER_NOT_AUTHORIZED,
 )
-from fluentia.core.model.shortcut import get_object_or_404, get_or_create_object
+from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.database import get_session
 
 term_router = APIRouter(prefix='/term', tags=['term'])
@@ -51,12 +51,11 @@ def create_term(
     user: AdminUser,
     session: Session,
 ):
-    obj, created = models.Term.get_or_create(session, **term_schema.model_dump())
-    if created:
-        return JSONResponse(
-            content=obj.model_dump(), status_code=status.HTTP_201_CREATED
-        )
-    return JSONResponse(content=obj.model_dump(), status_code=status.HTTP_200_OK)
+    db_term, created = models.Term.get_or_create(session, **term_schema.model_dump())
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content=db_term.model_dump(),
+    )
 
 
 @term_router.get(
@@ -306,19 +305,12 @@ def update_pronunciation(
     response_model=schema.TermDefinitionView,
     response_description='A criação da definição do termo especificado.',
     responses={
+        200: {
+            'description': 'A definição enviada já existe para esse termo, por esse motivo ele foi retornado.',
+        },
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,
-        409: {
-            'description': 'A tradução nesse idioma enviada para essa definição já existe.',
-            'content': {
-                'application/json': {
-                    'example': {
-                        'detail': 'translation language for this definition is already registered.'
-                    }
-                }
-            },
-        },
     },
     summary='Criação das definições de um termo.',
     description='Endpoint utilizado para criar uma definição de um certo termo de um determinado idioma.',
@@ -334,40 +326,58 @@ def create_definition(
         origin_language=definition_schema.origin_language,
     )
 
-    db_definition, _ = get_or_create_object(
-        models.TermDefinition,
-        session=session,
-        defaults=definition_schema.model_dump(
-            include={'term_level'}, exclude_unset=True
-        ),
-        **definition_schema.model_dump(exclude={'term_level'}),
+    db_definition, created = models.TermDefinition.get_or_create(
+        session, definition_schema
+    )
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content=db_definition.model_dump(),
     )
 
-    translation_values = definition_schema.model_dump_translation().values()
-    if not any(translation_values):
-        return db_definition
+
+@term_router.post(
+    path='/definition/translation',
+    status_code=201,
+    response_model=schema.TermDefinitionTranslationSchema,
+    response_description='A criação da tradução para a definição do termo especificado.',
+    responses={
+        401: USER_NOT_AUTHORIZED,
+        403: NOT_ENOUGH_PERMISSION,
+        404: TERM_NOT_FOUND,
+        409: {
+            'description': 'A tradução nesse idioma enviada para essa definição já existe.',
+            'content': {
+                'application/json': {
+                    'example': {
+                        'detail': 'translation language for this definition is already registered.'
+                    }
+                }
+            },
+        },
+    },
+    summary='Criação da tradução das definições de um termo.',
+    description='Endpoint utilizado para criar uma tradução para uma definição de um certo termo de um determinado idioma.',
+)
+def create_definition_translation(
+    user: AdminUser,
+    session: Session,
+    translation_schema: schema.TermDefinitionTranslationSchema,
+):
+    get_object_or_404(
+        models.TermDefinition,
+        session=session,
+        id=translation_schema.term_definition_id,
+    )
 
     try:
-        db_definition_translation = models.TermDefinitionTranslation.create(
-            session=session,
-            translation=definition_schema.translation_definition,
-            language=definition_schema.translation_language,
-            meaning=definition_schema.translation_meaning,
-            term_definition_id=db_definition.id,
+        return models.TermDefinitionTranslation.create(
+            session=session, **translation_schema.model_dump()
         )
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='translation language for this definition is already registered.',
         )
-
-    session.refresh(db_definition)
-    return schema.TermDefinitionView(
-        **db_definition.model_dump(),
-        translation_definition=db_definition_translation.translation,
-        translation_language=db_definition_translation.language,
-        translation_meaning=db_definition_translation.meaning,
-    )
 
 
 @term_router.get(
@@ -437,44 +447,48 @@ def update_definition(
     session: Session,
     definition_id: int,
     definition_schema: schema.TermDefinitionSchemaUpdate,
-    translation_language: constants.Language | None = Query(
-        default=None,
-        description='Irá modificar a definição para a tradução especificada',
-    ),
 ):
     db_definition = get_object_or_404(models.TermDefinition, session, id=definition_id)
 
-    if translation_language is None:
-        return models.TermDefinition.update(
-            session,
-            db_definition,
-            **definition_schema.model_dump(
-                exclude_unset=True,
-            ),
-        )
+    return models.TermDefinition.update(
+        session,
+        db_definition,
+        **definition_schema.model_dump(
+            exclude_unset=True,
+        ),
+    )
 
+
+@term_router.patch(
+    path='/definition/translation/{definition_id}/{language}',
+    status_code=200,
+    response_model=schema.TermDefinitionTranslationSchema,
+    response_description='Atualização das definições do termo.',
+    responses={
+        401: USER_NOT_AUTHORIZED,
+        403: NOT_ENOUGH_PERMISSION,
+        404: TERM_NOT_FOUND,
+    },
+    summary='Atualizar as definições de um termo.',
+    description='Endpoint utilizado para atualizar as definição de um certo termo de um determinado idioma.',
+)
+def update_definition_translation(
+    user: AdminUser,
+    session: Session,
+    definition_id: int,
+    language: constants.Language,
+    translation_schema: schema.TermDefinitionTranslationUpdate,
+):
     db_definition_translation = get_object_or_404(
         models.TermDefinitionTranslation,
         session,
-        term_definition_id=db_definition.id,
-        language=translation_language,
+        term_definition_id=definition_id,
+        language=language,
     )
-
-    translation_meaning = getattr(definition_schema, 'translation_meaning', None)
-    translation_definition = getattr(definition_schema, 'translation_definition', None)
-    models.TermDefinitionTranslation.update(
+    return models.TermDefinitionTranslation.update(
         session,
         db_definition_translation,
-        meaning=translation_meaning,
-        translation=translation_definition,
-    )
-
-    session.refresh(db_definition)
-    return schema.TermDefinitionView(
-        **db_definition.model_dump(),
-        translation_definition=db_definition_translation.translation,
-        translation_language=db_definition_translation.language,
-        translation_meaning=db_definition_translation.meaning,
+        **translation_schema.model_dump(exclude_unset=True),
     )
 
 
@@ -483,6 +497,37 @@ def update_definition(
     status_code=201,
     response_model=schema.TermExampleView,
     response_description='Criação de um exemplo para determinado termo ou definição.',
+    responses={
+        401: USER_NOT_AUTHORIZED,
+        403: NOT_ENOUGH_PERMISSION,
+        404: TERM_NOT_FOUND,
+    },
+    summary='Criação de exemplos sobre um termo.',
+    description='Endpoint utilizado para criação de exemplos para termos ou definições.',
+)
+def create_example(
+    user: AdminUser,
+    session: Session,
+    example_schema: schema.TermExampleSchema,
+):
+    models.Term.get_or_404(
+        session=session,
+        term=example_schema.term,
+        origin_language=example_schema.origin_language,
+    )
+
+    db_example, created = models.TermExample.get_or_create(session, example_schema)
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content=db_example.model_dump(),
+    )
+
+
+@term_router.post(
+    path='/example/translation',
+    status_code=201,
+    response_model=schema.TermExampleTranslationSchema,
+    response_description='Criação de uma tradução para um exemplo para determinado termo ou definição.',
     responses={
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
@@ -498,49 +543,27 @@ def update_definition(
             },
         },
     },
-    summary='Criação de exemplos sobre um termo.',
-    description='Endpoint utilizado para criação de exemplos para termos ou definições.',
+    summary='Criação de traduções para exemplos sobre um termo.',
+    description='Endpoint utilizado para criação tradução para exemplos de termos ou definições.',
 )
-def create_example(
-    user: AdminUser, session: Session, example_schema: schema.TermExampleSchema
+def create_example_translation(
+    user: AdminUser,
+    session: Session,
+    translation_schema: schema.TermExampleTranslationSchema,
 ):
-    models.Term.get_or_404(
-        session=session,
-        term=example_schema.term,
-        origin_language=example_schema.origin_language,
+    get_object_or_404(
+        models.TermExample, session, id=translation_schema.term_example_id
     )
-
-    db_example, _ = get_or_create_object(
-        models.TermExample,
-        session=session,
-        defaults=example_schema.model_dump(
-            include={'term_definition_id'}, exclude_unset=True
-        ),
-        **example_schema.model_dump(exclude={'term_definition_id'}),
-    )
-    translation_attributes = example_schema.model_dump_translation().values()
-    if not any(translation_attributes):
-        return db_example
 
     try:
-        db_example_translation = models.TermExampleTranslation.create(
-            session,
-            language=example_schema.translation_language,
-            term_example_id=db_example.id,
-            translation=example_schema.translation_example,
+        return models.TermExampleTranslation.create(
+            session, **translation_schema.model_dump()
         )
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='translation language for this example is already registered.',
         )
-
-    session.refresh(db_example)
-    return schema.TermExampleView(
-        **db_example.model_dump(),
-        translation_language=db_example_translation.language,
-        translation_example=db_example_translation.translation,
-    )
 
 
 @term_router.get(
@@ -602,35 +625,42 @@ def update_example(
     session: Session,
     example_id: int,
     example_schema: schema.TermExampleSchemaUpdate,
-    translation_language: constants.Language | None = Query(
-        default=None,
-        description='Irá modificar o exemplo para a tradução especificada',
-    ),
 ):
     db_example = get_object_or_404(models.TermExample, session, id=example_id)
 
-    if translation_language is None:
-        return models.TermExample.update(
-            session, db_example, example=example_schema.example
-        )
+    return models.TermExample.update(
+        session, db_example, example=example_schema.example
+    )
 
+
+@term_router.patch(
+    path='/example/translation/{example_id}/{language}',
+    status_code=200,
+    response_model=schema.TermExampleTranslationSchema,
+    response_description='Atualização da tradução do exemplo do termo ou definição.',
+    responses={
+        401: USER_NOT_AUTHORIZED,
+        403: NOT_ENOUGH_PERMISSION,
+        404: TERM_NOT_FOUND,
+    },
+    summary='Atualizar traduções de exemplos.',
+    description='Endpoint para atualizar traduções de um exemplo ligado a um termo ou definição.',
+)
+def update_example_translation(
+    user: AdminUser,
+    session: Session,
+    example_id: int,
+    language: constants.Language,
+    example_schema: schema.TermExampleTranslationUpdateSchema,
+):
     db_example_translation = get_object_or_404(
         models.TermExampleTranslation,
         session,
-        term_example_id=db_example.id,
-        language=translation_language,
+        term_example_id=example_id,
+        language=language,
     )
-    translation_example = getattr(example_schema, 'translation_example', None)
-    if translation_example:
-        models.TermExampleTranslation.update(
-            session, db_example_translation, translation=translation_example
-        )
-
-    session.refresh(db_example)
-    return schema.TermExampleView(
-        **db_example.model_dump(),
-        translation_language=db_example_translation.language,
-        translation_example=db_example.example,
+    return models.TermExampleTranslation.update(
+        session, db_example_translation, **example_schema.model_dump()
     )
 
 

@@ -1,5 +1,4 @@
 import pytest
-from sqlmodel import select
 
 from fluentia.apps.term.constants import (
     Language,
@@ -224,7 +223,7 @@ class TestTerm:
             ],
         )
 
-    def test_get_term_was_not_found(self, client):
+    def test_get_term_does_not_exists(self, client):
         response = client.get(
             self.get_term_route(term='teste', origin_language=Language.PORTUGUESE)
         )
@@ -687,6 +686,9 @@ class TestPronunciation:
 
 class TestTermDefinition:
     create_definition_route = app.url_path_for('create_definition')
+    create_definition_translation_route = app.url_path_for(
+        'create_definition_translation'
+    )
 
     def get_definition_route(
         self,
@@ -706,9 +708,15 @@ class TestTermDefinition:
             term_level=term_level,
         )
 
-    def update_definition_route(self, definition_id: int, translation_language=None):
-        url = app.url_path_for('update_definition', definition_id=definition_id)
-        return set_url_params(url, translation_language=translation_language)
+    def update_definition_route(self, definition_id):
+        return app.url_path_for('update_definition', definition_id=definition_id)
+
+    def update_definition_translation_route(self, definition_id, language):
+        return app.url_path_for(
+            'update_definition_translation',
+            definition_id=definition_id,
+            language=language.value,
+        )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_definition(self, session, client, generate_payload, token_header):
@@ -728,59 +736,26 @@ class TestTermDefinition:
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_definition_already_exists(
-        self, client, generate_payload, token_header
+        self, client, generate_payload, session, token_header
     ):
-        payload = generate_payload(TermDefinitionFactory)
-        db_definition = TermDefinitionFactory(**payload)
-        payload.update(
-            {
-                'term_level': None,
-            }
+        payload = generate_payload(
+            TermDefinitionFactory,
+            term_level=None,
+            definition='Tésté#!#.',
+            term='TésTê!#;',
         )
+        db_definition = TermDefinitionFactory(**payload)
+        payload.update({'definition': 'teste', 'term': 'teste'})
 
         response = client.post(
             self.create_definition_route,
             json=payload,
             headers=token_header,
         )
+        session.refresh(db_definition)
 
-        assert response.status_code == 201
+        assert response.status_code == 200
         assert TermDefinition(**response.json()) == db_definition
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_definition_with_translation(
-        self, client, session, generate_payload, token_header
-    ):
-        payload = generate_payload(TermDefinitionFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-        payload.update(
-            {
-                'translation_language': Language.PORTUGUESE,
-                'translation_definition': 'tester',
-                'translation_meaning': 'tester',
-            }
-        )
-
-        response = client.post(
-            self.create_definition_route, json=payload, headers=token_header
-        )
-        assert response.status_code == 201
-
-        db_definition = get_object_or_404(
-            TermDefinition, session=session, id=response.json()['id']
-        )
-        db_definition_translation = get_object_or_404(
-            TermDefinitionTranslation,
-            session=session,
-            term_definition_id=response.json()['id'],
-            language=response.json()['translation_language'],
-        )
-        assert TermDefinition(**response.json()) == TermDefinition(
-            **db_definition.model_dump(),
-            translation_definition=db_definition_translation.translation,
-            translation_language=db_definition_translation.language,
-            translation_meaning=db_definition_translation.meaning,
-        )
 
     def test_create_definition_user_is_not_authenticated(
         self, client, generate_payload
@@ -815,44 +790,77 @@ class TestTermDefinition:
         assert response.status_code == 404
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_definition_with_translation_conflict(
-        self, client, session, token_header
+    def test_create_definition_translation(
+        self, client, session, generate_payload, token_header
     ):
+        payload = generate_payload(TermDefinitionTranslationFactory)
         definition = TermDefinitionFactory()
-        TermDefinitionTranslationFactory(
-            language=Language.ENGLISH, term_definition_id=definition.id
-        )
-        session.refresh(definition)
-        payload = {
-            **definition.model_dump(),
-            'translation_language': Language.ENGLISH,
-            'translation_definition': 'tester',
-            'translation_meaning': 'tester',
-        }
+        payload.update({'term_definition_id': definition.id})
 
         response = client.post(
-            self.create_definition_route, json=payload, headers=token_header
+            self.create_definition_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        assert_json_response(
+            session,
+            TermDefinitionTranslation,
+            response.json(),
+            term_definition_id=payload['term_definition_id'],
+            language=payload['language'],
+        )
+
+    def test_create_definition_translation_user_is_not_authenticated(
+        self, client, generate_payload
+    ):
+        payload = generate_payload(TermDefinitionTranslationFactory)
+        definition = TermDefinitionFactory()
+        payload.update({'term_definition_id': definition.id})
+
+        response = client.post(self.create_definition_translation_route, json=payload)
+
+        assert response.status_code == 401
+
+    def test_create_definition_translation_user_not_enough_permission(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermDefinitionTranslationFactory)
+        definition = TermDefinitionFactory()
+        payload.update({'term_definition_id': definition.id})
+
+        response = client.post(
+            self.create_definition_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_definition_translation_definition_does_not_exists(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermDefinitionTranslationFactory)
+        payload.update({'term_definition_id': 512351})
+
+        response = client.post(
+            self.create_definition_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_definition_translation_conflict(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermDefinitionTranslationFactory)
+        definition = TermDefinitionFactory()
+        payload.update({'term_definition_id': definition.id})
+        TermDefinitionTranslationFactory(**payload)
+
+        response = client.post(
+            self.create_definition_translation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 409
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_definition_with_one_translation_field(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermDefinitionFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-        payload.update(
-            {
-                'translation_meaning': 'tester',
-            }
-        )
-
-        response = client.post(
-            self.create_definition_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 422
 
     def test_get_definition(self, client):
         term = TermFactory()
@@ -1124,7 +1132,6 @@ class TestTermDefinition:
         payload = generate_payload(
             TermDefinitionFactory, include={'definition', 'term_level'}
         )
-        payload.update({'translation_meaning': 'brazil'})
 
         response = client.patch(
             self.update_definition_route(definition.id),
@@ -1136,30 +1143,6 @@ class TestTermDefinition:
         assert response.status_code == 200
         assert definition.definition == payload['definition']
         assert definition.term_level == payload['term_level']
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_definition_translation(self, session, client, token_header):
-        definition = TermDefinitionFactory()
-        definition_translation = TermDefinitionTranslationFactory(
-            term_definition_id=definition.id
-        )
-        payload = {
-            'translation_meaning': 'brazil',
-            'translation_definition': 'reference',
-        }
-
-        response = client.patch(
-            self.update_definition_route(
-                definition.id, translation_language=definition_translation.language
-            ),
-            json=payload,
-            headers=token_header,
-        )
-        session.refresh(definition_translation)
-
-        assert response.status_code == 200
-        assert definition_translation.meaning == payload['translation_meaning']
-        assert definition_translation.translation == payload['translation_definition']
 
     def test_update_definition_user_not_authenticated(self, client, generate_payload):
         definition = TermDefinitionFactory()
@@ -1205,18 +1188,83 @@ class TestTermDefinition:
         assert response.status_code == 404
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_definition_translation_not_found(
-        self, client, generate_payload, token_header
+    def test_update_definition_translation(
+        self, session, client, generate_payload, token_header
     ):
         definition = TermDefinitionFactory()
+        definition_translation = TermDefinitionTranslationFactory(
+            term_definition_id=definition.id
+        )
         payload = generate_payload(
-            TermDefinitionFactory, include={'definition', 'term_level'}
+            TermDefinitionTranslationFactory, include={'meaning', 'translation'}
         )
 
         response = client.patch(
-            self.update_definition_route(
-                definition.id, translation_language=Language.DEUTSCH
+            self.update_definition_translation_route(
+                definition.id, definition_translation.language
             ),
+            json=payload,
+            headers=token_header,
+        )
+        session.refresh(definition_translation)
+
+        assert response.status_code == 200
+        assert definition_translation.meaning == payload['meaning']
+        assert definition_translation.translation == payload['translation']
+
+    def test_update_definition_translation_user_not_authenticated(
+        self, session, client, generate_payload
+    ):
+        definition = TermDefinitionFactory()
+        definition_translation = TermDefinitionTranslationFactory(
+            term_definition_id=definition.id
+        )
+        payload = generate_payload(
+            TermDefinitionTranslationFactory, include={'meaning', 'translation'}
+        )
+
+        response = client.patch(
+            self.update_definition_translation_route(
+                definition.id, definition_translation.language
+            ),
+            json=payload,
+        )
+        session.refresh(definition_translation)
+
+        assert response.status_code == 401
+
+    def test_update_definition_translation_user_not_enough_permission(
+        self, session, client, generate_payload, token_header
+    ):
+        definition = TermDefinitionFactory()
+        definition_translation = TermDefinitionTranslationFactory(
+            term_definition_id=definition.id
+        )
+        payload = generate_payload(
+            TermDefinitionTranslationFactory, include={'meaning', 'translation'}
+        )
+
+        response = client.patch(
+            self.update_definition_translation_route(
+                definition.id, definition_translation.language
+            ),
+            json=payload,
+            headers=token_header,
+        )
+        session.refresh(definition_translation)
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_update_definition_translation_definition_not_found(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(
+            TermDefinitionTranslationFactory, include={'meaning', 'translation'}
+        )
+
+        response = client.patch(
+            self.update_definition_translation_route(123, Language.CHINESE),
             json=payload,
             headers=token_header,
         )
@@ -1226,6 +1274,7 @@ class TestTermDefinition:
 
 class TestTermExample:
     create_example_route = app.url_path_for('create_example')
+    create_example_translation_route = app.url_path_for('create_example_translation')
 
     def get_example_route(
         self,
@@ -1243,9 +1292,15 @@ class TestTermExample:
             term_definition_id=term_definition_id,
         )
 
-    def update_example_route(self, example_id: int, translation_language=None):
-        url = app.url_path_for('update_example', example_id=example_id)
-        return set_url_params(url, translation_language=translation_language)
+    def update_example_route(self, example_id):
+        return app.url_path_for('update_example', example_id=example_id)
+
+    def update_example_translation_route(self, example_id, language):
+        return app.url_path_for(
+            'update_example_translation',
+            example_id=example_id,
+            language=language.value,
+        )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example(self, session, client, generate_payload, token_header):
@@ -1307,77 +1362,18 @@ class TestTermExample:
     def test_create_example_already_exists(
         self, client, generate_payload, token_header
     ):
-        payload = generate_payload(TermExampleFactory)
+        payload = generate_payload(
+            TermExampleFactory, example='*test* Têstè!#', term='TéStê!#!'
+        )
         db_example = TermExampleFactory(**payload)
+        payload.update({'example': '*test* teste', 'term': 'teste'})
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
         )
 
-        assert response.status_code == 201
+        assert response.status_code == 200
         assert response.json()['id'] == db_example.id
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation(
-        self, session, client, generate_payload, token_header
-    ):
-        payload = {
-            **generate_payload(TermExampleFactory),
-            'translation_language': Language.DEUTSCH,
-            'translation_example': '*test* test test',
-        }
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 201
-
-        db_example = session.exec(
-            select(TermExample).where(TermExample.id == response.json()['id'])
-        ).first()
-        db_example_translation = get_object_or_404(
-            TermExampleTranslation,
-            session,
-            term_example_id=db_example.id,
-            language=payload['translation_language'],
-        )
-        assert TermExample(**response.json()) == TermExample(
-            **db_example.model_dump(),
-            translation_language=db_example_translation.language,
-            translation_example=db_example.example,
-        )
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_not_highlighted(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermExampleFactory, example='test test test')
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 422
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation_not_highlighted(
-        self, client, generate_payload, token_header
-    ):
-        payload = {
-            **generate_payload(TermExampleFactory),
-            'translation_language': Language.DEUTSCH,
-            'translation_example': 'test test test',
-        }
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 422
 
     def test_create_example_user_is_authenticated(self, client, generate_payload):
         payload = generate_payload(TermExampleFactory)
@@ -1412,37 +1408,101 @@ class TestTermExample:
         assert response.status_code == 404
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation_conflict(self, client, session, token_header):
-        example = TermExampleFactory()
-        session.refresh(example)
-        payload = {
-            **example.model_dump(),
-            'translation_language': Language.CHINESE,
-            'translation_example': '*test* test test',
-        }
-        TermExampleTranslationFactory(
-            term_example_id=example.id,
-            language=Language.CHINESE,
-        )
+    def test_create_example_not_highlighted(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleFactory, example='test test test')
+        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation(
+        self, session, client, generate_payload, token_header
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update({'term_example_id': example.id})
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        assert_json_response(
+            session,
+            TermExampleTranslation,
+            response.json(),
+            term_example_id=example.id,
+            language=payload['language'],
+        )
+
+    def test_create_example_translation_user_is_not_authenticated(
+        self, client, generate_payload
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update({'term_example_id': example.id})
+
+        response = client.post(self.create_example_translation_route, json=payload)
+
+        assert response.status_code == 401
+
+    def test_create_example_translation_user_not_enough_permission(
+        self, client, generate_payload, token_header
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update({'term_example_id': example.id})
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_example_was_not_found(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update({'term_example_id': 123})
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_conflict(
+        self, client, generate_payload, token_header
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update({'term_example_id': example.id})
+        TermExampleTranslationFactory(**payload)
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 409
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_with_one_translation_field(
+    def test_create_example_translation_not_highlighted(
         self, client, generate_payload, token_header
     ):
-        payload = {
-            **generate_payload(TermExampleFactory),
-            'translation_example': '*test* test test',
-        }
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory, translation='test')
+        payload.update({'term_example_id': example.id})
 
         response = client.post(
-            self.create_example_route, json=payload, headers=token_header
+            self.create_example_translation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 422
@@ -1617,11 +1677,8 @@ class TestTermExample:
         ]
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example(self, client, session, token_header):
-        payload = {
-            'example': '*test* test test',
-            'translation_example': '*test* test test',
-        }
+    def test_update_example(self, client, session, generate_payload, token_header):
+        payload = generate_payload(TermExampleFactory, include={'example'})
         example = TermExampleFactory()
 
         response = client.patch(
@@ -1634,28 +1691,8 @@ class TestTermExample:
         assert response.status_code == 200
         assert example.example == payload['example']
 
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_translation(self, client, session, token_header):
-        payload = {'translation_example': '*test* test test'}
-        example = TermExampleFactory()
-        translation = TermExampleTranslationFactory(
-            term_example_id=example.id, language=Language.PORTUGUESE
-        )
-
-        response = client.patch(
-            self.update_example_route(
-                example.id, translation_language=Language.PORTUGUESE
-            ),
-            json=payload,
-            headers=token_header,
-        )
-        session.refresh(translation)
-
-        assert response.status_code == 200
-        assert translation.translation == payload['translation_example']
-
-    def test_update_example_user_not_authenticated(self, client):
-        payload = {'example': '*test* test test'}
+    def test_update_example_user_not_authenticated(self, client, generate_payload):
+        payload = generate_payload(TermExampleFactory, include={'example'})
         example = TermExampleFactory()
 
         response = client.patch(
@@ -1665,8 +1702,10 @@ class TestTermExample:
 
         assert response.status_code == 401
 
-    def test_update_example_user_not_enough_permissions(self, client, token_header):
-        payload = {'example': '*test* test test'}
+    def test_update_example_user_not_enough_permissions(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleFactory, include={'example'})
         example = TermExampleFactory()
 
         response = client.patch(
@@ -1678,8 +1717,10 @@ class TestTermExample:
         assert response.status_code == 403
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_does_not_exists(self, client, token_header):
-        payload = {'example': '*test* test test'}
+    def test_update_example_does_not_exists(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleFactory, include={'example'})
 
         response = client.patch(
             self.update_example_route(123),
@@ -1703,16 +1744,84 @@ class TestTermExample:
         assert response.status_code == 422
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_translation_is_not_highlighted(self, client, token_header):
-        payload = {'translation_example': 'test test test'}
+    def test_update_example_translation(
+        self, client, session, generate_payload, token_header
+    ):
+        payload = generate_payload(
+            TermExampleTranslationFactory, include={'translation'}
+        )
         example = TermExampleFactory()
-        TermExampleTranslationFactory(
-            term_example_id=example.id, language=Language.PORTUGUESE
+        translation = TermExampleTranslationFactory(term_example_id=example.id)
+
+        response = client.patch(
+            self.update_example_translation_route(example.id, translation.language),
+            json=payload,
+            headers=token_header,
+        )
+        session.refresh(translation)
+
+        assert response.status_code == 200
+        assert translation.translation == payload['translation']
+
+    def test_update_example_translation_user_not_authenticated(
+        self, client, generate_payload
+    ):
+        payload = generate_payload(
+            TermExampleTranslationFactory, include={'translation'}
+        )
+        example = TermExampleFactory()
+        translation = TermExampleTranslationFactory(term_example_id=example.id)
+
+        response = client.patch(
+            self.update_example_translation_route(example.id, translation.language),
+            json=payload,
+        )
+
+        assert response.status_code == 401
+
+    def test_update_example_translation_user_not_enough_permission(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(
+            TermExampleTranslationFactory, include={'translation'}
+        )
+        example = TermExampleFactory()
+        translation = TermExampleTranslationFactory(term_example_id=example.id)
+
+        response = client.patch(
+            self.update_example_translation_route(example.id, translation.language),
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_update_example_translation_example_does_not_exists(
+        self, client, session, generate_payload, token_header
+    ):
+        payload = generate_payload(
+            TermExampleTranslationFactory, include={'translation'}
         )
 
         response = client.patch(
-            self.update_example_route(
-                example.id, translation_language=Language.PORTUGUESE
+            self.update_example_translation_route(123, Language.PORTUGUESE),
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_update_example_translation_is_not_highlighted(self, client, token_header):
+        payload = {'translation': 'test test test'}
+        example = TermExampleFactory()
+        translation = TermExampleTranslationFactory(term_example_id=example.id)
+
+        response = client.patch(
+            self.update_example_translation_route(
+                example.id,
+                translation.language,
             ),
             json=payload,
             headers=token_header,

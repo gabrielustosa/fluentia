@@ -98,42 +98,16 @@ class TermDefinitionSchema(TermSchemaBase):
     definition: str = Field(
         examples=['Set of walls, rooms, and roof with specific purpose of habitation.']
     )
+
+
+class TermDefinitionView(TermDefinitionSchema):
+    id: int
     translation_language: constants.Language | None = None
     translation_meaning: str | None = Field(examples=['Casa, lar'], default=None)
     translation_definition: str | None = Field(
         default=None,
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
-
-    translation_attributes: ClassVar[set] = {
-        'translation_definition',
-        'translation_language',
-        'translation_meaning',
-    }
-
-    @model_validator(mode='before')
-    def pre_validate(cls, values):
-        if isinstance(values, dict):
-            translation_attributes = [
-                values.get(attr) for attr in cls.translation_attributes
-            ]
-            if any(translation_attributes) and not all(translation_attributes):
-                raise ValueError('all translation attributes need to be setup.')
-        return values
-
-    def model_dump(self, *args, **kwargs):
-        exclude = kwargs.pop('exclude', {})
-        return super().model_dump(
-            *args, **kwargs, exclude={*self.translation_attributes, *exclude}
-        )
-
-    def model_dump_translation(self, *args, **kwargs):
-        include = kwargs.pop('include', {})
-        return super().model_dump(include={*self.translation_attributes, *include})
-
-
-class TermDefinitionView(TermDefinitionSchema):
-    id: int
 
 
 class TermDefinitionSchemaUpdate(BaseModel):
@@ -143,19 +117,29 @@ class TermDefinitionSchemaUpdate(BaseModel):
         default=None,
     )
     part_of_speech: str | None = Field(default=None, examples=(['substantivo']))
-    translation_meaning: str | None = Field(default=None, examples=['Casa, lar'])
-    translation_definition: str | None = Field(
+
+
+class TermDefinitionTranslationSchema(BaseModel):
+    term_definition_id: int
+    language: constants.Language
+    meaning: str = Field(examples=['Casa, lar'])
+    translation: str = Field(
+        examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
+    )
+
+
+class TermDefinitionTranslationUpdate(BaseModel):
+    meaning: str | None = Field(default=None, examples=['Casa, lar'])
+    translation: str | None = Field(
         default=None,
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
 
-    def model_dump(self, *args, **kwargs):
-        exclude = kwargs.pop('exclude', {})
-        return super().model_dump(
-            *args,
-            **kwargs,
-            exclude={*exclude, 'translation_meaning', 'translation_definition'},
-        )
+
+def _check_highlight(value: str) -> str:
+    if not check_text_highlight(value):
+        raise ValueError('term is not highlighted in the example.')
+    return value
 
 
 class TermExampleSchema(TermSchemaBase):
@@ -165,6 +149,12 @@ class TermExampleSchema(TermSchemaBase):
         examples=["Yesterday a have lunch in my mother's *house*."],
         description="O termo referido do exemplo será circulado pelos caracteres '*'.",
     )
+
+    example_validation = field_validator('example')(_check_highlight)
+
+
+class TermExampleView(TermExampleSchema):
+    id: int
     translation_language: constants.Language | None = None
     translation_example: str | None = Field(
         default=None,
@@ -172,72 +162,36 @@ class TermExampleSchema(TermSchemaBase):
         description="O termo referido do exemplo será circulado pelos caracteres '*'.",
     )
 
-    translation_attributes: ClassVar[set] = {
-        'translation_language',
-        'translation_example',
-    }
-
-    @model_validator(mode='before')
-    def pre_validate(cls, values):
-        if isinstance(values, dict):
-            valid_values = dict(
-                filter(lambda item: item[1] is not None, values.items())
-            )
-            translation_attributes = [
-                valid_values.get(attr) for attr in cls.translation_attributes
-            ]
-            if any(translation_attributes) and not all(translation_attributes):
-                raise ValueError('all translation attributes need to be setup.')
-        return values
-
-    @field_validator('translation_example', 'example')
-    @classmethod
-    def chech_highlight(cls, value: str) -> str:
-        if not check_text_highlight(value):
-            raise ValueError('term is not highlighted in the example.')
-        return value
-
-    def model_dump(self, *args, **kwargs):
-        exclude = kwargs.pop('exclude', {})
-        return super().model_dump(
-            *args, **kwargs, exclude={*self.translation_attributes, *exclude}
-        )
-
-    def model_dump_translation(self, *args, **kwargs):
-        include = kwargs.pop('include', {})
-        return super().model_dump(
-            *args, **kwargs, include={*self.translation_attributes, *include}
-        )
-
-
-class TermExampleView(TermExampleSchema):
-    id: int
-
 
 class TermExampleSchemaUpdate(BaseModel):
-    translation_example: str | None = Field(
-        default=None,
-        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
-    )
     example: str | None = Field(
         default=None,
         examples=["Yesterday a have lunch in my mother's *house*."],
         description="O termo referido do exemplo será circulado pelos caracteres '*'.",
     )
 
-    @field_validator('translation_example', 'example')
-    @classmethod
-    def chech_highlight(cls, value: str) -> str:
-        if not check_text_highlight(value):
-            raise ValueError('term is not highlighted in the example.')
-        return value
+    example_validation = field_validator('example')(_check_highlight)
 
-    def model_dump(self, *args, **kwargs):
-        exclude = kwargs.pop('exclude', {})
-        return super().model_dump(
-            *args, **kwargs, exclude={*exclude, 'translation_example'}
-        )
+
+class TermExampleTranslationSchema(BaseModel):
+    term_example_id: int
+    language: constants.Language
+    translation: str = Field(
+        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
+        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+    )
+
+    translation_validation = field_validator('translation')(_check_highlight)
+
+
+class TermExampleTranslationUpdateSchema(BaseModel):
+    translation: str | None = Field(
+        default=None,
+        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
+        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+    )
+
+    translation_validation = field_validator('translation')(_check_highlight)
 
 
 class TermLexicalSchema(TermSchemaBase):
