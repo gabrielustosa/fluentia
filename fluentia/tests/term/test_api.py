@@ -1282,6 +1282,7 @@ class TestTermExample:
         origin_language=None,
         translation_language=None,
         term_definition_id=None,
+        term_lexical_id=None,
     ):
         url = app.url_path_for('get_example')
         return set_url_params(
@@ -1290,6 +1291,7 @@ class TestTermExample:
             origin_language=origin_language,
             translation_language=translation_language,
             term_definition_id=term_definition_id,
+            term_lexical_id=term_lexical_id,
         )
 
     def update_example_route(self, example_id):
@@ -1675,6 +1677,78 @@ class TestTermExample:
             )
             for example, translation in zip(examples, translations)
         ]
+
+    def test_get_example_filter_lexical_id(self, client):
+        term = TermFactory()
+        lexical = TermLexicalFactory(
+            term=term.term, origin_language=term.origin_language
+        )
+        examples = TermExampleFactory.create_batch(
+            size=5,
+            term=term.term,
+            origin_language=term.origin_language,
+            term_lexical_id=lexical.id,
+        )
+        translations = [
+            TermExampleTranslationFactory(
+                term_example_id=example.id, language=Language.PORTUGUESE
+            )
+            for example in examples
+        ]
+        examples2 = TermExampleFactory.create_batch(
+            size=5,
+            term=term.term,
+            origin_language=term.origin_language,
+        )
+        for example in examples2:
+            TermExampleTranslationFactory(term_example_id=example.id)
+
+        response = client.get(
+            self.get_example_route(
+                term=term.term,
+                origin_language=term.origin_language,
+                term_lexical_id=lexical.id,
+                translation_language=Language.PORTUGUESE,
+            )
+        )
+
+        assert response.status_code == 200
+        assert [TermExampleView(**example) for example in response.json()] == [
+            TermExampleView(
+                **example.model_dump(),
+                translation_language=translation.language,  # pyright: ignore[reportArgumentType]
+                translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
+            )
+            for example, translation in zip(examples, translations)
+        ]
+
+    def test_get_example_translation_filter_lexical_id(self, client):
+        term = TermFactory()
+        lexical = TermLexicalFactory(
+            term=term.term, origin_language=term.origin_language
+        )
+        examples = TermExampleFactory.create_batch(
+            size=5,
+            term=term.term,
+            origin_language=term.origin_language,
+            term_lexical_id=lexical.id,
+        )
+        TermExampleFactory.create_batch(
+            size=5,
+            term=term.term,
+            origin_language=term.origin_language,
+        )
+
+        response = client.get(
+            self.get_example_route(
+                term=term.term,
+                origin_language=term.origin_language,
+                term_lexical_id=lexical.id,
+            )
+        )
+
+        assert response.status_code == 200
+        assert [TermExample(**example) for example in response.json()] == examples
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_update_example(self, client, session, generate_payload, token_header):

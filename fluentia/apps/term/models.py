@@ -176,18 +176,7 @@ class TermDefinition(sm.SQLModel, table=True):
         origin_language,
         part_of_speech=None,
         term_level=None,
-        translation_language=None,
     ):
-        if translation_language:
-            return TermDefinitionTranslation.list(
-                session,
-                term,
-                origin_language,
-                part_of_speech,
-                term_level,
-                translation_language,
-            )
-
         filters = set()
         if term_level:
             filters.add(TermDefinition.term_level == term_level)
@@ -328,30 +317,14 @@ class TermExample(sm.SQLModel, table=True):
         term,
         origin_language,
         term_definition_id=None,
-        translation_language=None,
+        term_lexical_id=None,
     ):
         query_example = sm.select(TermExample).where(
             sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
             TermExample.origin_language == origin_language,
             TermExample.term_definition_id == term_definition_id,
+            TermExample.term_lexical_id == term_lexical_id,
         )
-        if translation_language is not None:
-            query_example = (
-                sm.select(
-                    TermExample,
-                    TermExampleTranslation,
-                )
-                .join(
-                    TermExampleTranslation,
-                    TermExample.id == TermExampleTranslation.term_example_id,  # pyright: ignore[reportArgumentType]
-                )
-                .where(
-                    TermExampleTranslation.language == translation_language,
-                    sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
-                    TermExample.origin_language == origin_language,
-                    TermExample.term_definition_id == term_definition_id,
-                )
-            )
         return session.exec(query_example).all()
 
     @staticmethod
@@ -371,6 +344,34 @@ class TermExampleTranslation(sm.SQLModel, table=True):
     @staticmethod
     def update(session, db_example, **data):
         return update(session, db_example, **data)
+
+    @staticmethod
+    def list(
+        session,
+        term,
+        origin_language,
+        translation_language,
+        term_definition_id=None,
+        term_lexical_id=None,
+    ):
+        query_example = (
+            sm.select(
+                TermExample,
+                TermExampleTranslation,
+            )
+            .join(
+                TermExampleTranslation,
+                TermExample.id == TermExampleTranslation.term_example_id,  # pyright: ignore[reportArgumentType]
+            )
+            .where(
+                TermExampleTranslation.language == translation_language,
+                sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
+                TermExample.origin_language == origin_language,
+                TermExample.term_definition_id == term_definition_id,
+                TermExample.term_lexical_id == term_lexical_id,
+            )
+        )
+        return session.exec(query_example).all()
 
     __table_args__ = (
         sm.ForeignKeyConstraint(

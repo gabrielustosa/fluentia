@@ -405,11 +405,15 @@ def get_definition(
 ):
     if translation_language is None:
         return models.TermDefinition.list(
-            session, term, origin_language, part_of_speech, term_level
+            session,
+            term,
+            origin_language,
+            part_of_speech,
+            term_level,
         )
 
     definition_list = []
-    for row in models.TermDefinition.list(
+    for row in models.TermDefinitionTranslation.list(
         session,
         term,
         origin_language,
@@ -586,15 +590,28 @@ def get_example(
         default=None,
         description='Filtrar por exemplos sobre a definição de um termo.',
     ),
+    term_lexical_id: int | None = Query(
+        default=None,
+        description='Filtrar por lexical sobre um termo.',
+    ),
 ):
     if translation_language is None:
         return models.TermExample.list(
-            session, term, origin_language, term_definition_id
+            session,
+            term,
+            origin_language,
+            term_definition_id,
+            term_lexical_id,
         )
 
     example_list = []
-    for row in models.TermExample.list(
-        session, term, origin_language, term_definition_id, translation_language
+    for row in models.TermExampleTranslation.list(
+        session,
+        term,
+        origin_language,
+        translation_language,
+        term_definition_id,
+        term_lexical_id,
     ):
         db_example, db_example_translation = row
         example_list.append(
