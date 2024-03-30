@@ -41,11 +41,50 @@ class Term(sm.SQLModel, table=True):
     @staticmethod
     def search(session, text, origin_language):
         return session.exec(
-            sm.select(Term).where(
+            sm.select(Term)
+            .where(
                 Term.origin_language == origin_language,
                 sm.func.clean_text(Term.term).like(
                     '%' + sm.func.clean_text(text) + '%'
                 ),
+            )
+            .union(
+                sm.select(Term).where(
+                    sm.tuple_(Term.term, Term.origin_language).in_(
+                        sm.select(TermLexical.term, TermLexical.origin_language).where(
+                            sm.func.clean_text(TermLexical.value).like(
+                                '%' + sm.func.clean_text(text) + '%'
+                            ),
+                            TermLexical.origin_language == origin_language,
+                            TermLexical.type == constants.TermLexicalType.FORM,
+                        )
+                    ),
+                )
+            )
+        )
+
+    @staticmethod
+    def search_term_meaning(session, text, origin_language, translation_language):
+        translation_query = (
+            sm.select(
+                TermDefinition.term,
+                TermDefinition.origin_language,
+            )
+            .where(
+                sm.func.clean_text(TermDefinitionTranslation.meaning).like(
+                    '%' + sm.func.clean_text(text) + '%'
+                ),
+                TermDefinition.origin_language == origin_language,
+                TermDefinitionTranslation.language == translation_language,
+            )
+            .join(
+                TermDefinitionTranslation,
+                TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
+            )
+        )
+        return session.exec(
+            sm.select(Term).where(
+                sm.tuple_(Term.term, Term.origin_language).in_(translation_query)
             )
         )
 
@@ -266,6 +305,27 @@ class TermDefinitionTranslation(sm.SQLModel, table=True):
             )
         )
         return session.exec(query_translation)
+
+    @staticmethod
+    def list_meaning(session, term, origin_language, translation_language):
+        translation_query = (
+            sm.select(
+                TermDefinitionTranslation.meaning,
+            )
+            .select_from(
+                sm.join(
+                    TermDefinition,
+                    TermDefinitionTranslation,
+                    TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
+                )
+            )
+            .where(
+                TermDefinition.term == term,
+                TermDefinition.origin_language == origin_language,
+                TermDefinitionTranslation.language == translation_language,
+            )
+        )
+        return session.exec(translation_query)
 
 
 class TermExample(sm.SQLModel, table=True):

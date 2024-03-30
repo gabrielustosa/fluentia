@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as SQLModelSession
-from sqlmodel import func, join, select, tuple_
 
 from fluentia.apps.term import constants, models, schema
 from fluentia.apps.user.models import User
@@ -88,32 +87,14 @@ def get_term(
         session=session, term=term, origin_language=origin_language
     )
 
-    if not translation_language and not lexical and not pronunciation:
-        return db_term
-
     meanings_list = []
     if translation_language:
-        translation_query = (
-            select(
-                models.TermDefinitionTranslation.meaning,
-            )
-            .select_from(
-                join(
-                    models.TermDefinition,
-                    models.TermDefinitionTranslation,
-                    models.TermDefinition.id
-                    == models.TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
-                )
-            )
-            .where(
-                models.TermDefinition.term == term,
-                models.TermDefinition.origin_language == origin_language,
-                models.TermDefinitionTranslation.language == translation_language,
-            )
+        meanings_list = models.TermDefinitionTranslation.list_meaning(
+            session,
+            term,
+            origin_language,
+            translation_language,
         )
-        result_query = session.exec(translation_query)
-        for row in result_query.all():
-            meanings_list.append(row)
 
     lexical_list = []
     if lexical:
@@ -173,28 +154,11 @@ def search_term_meaning(
     origin_language: constants.Language,
     translation_language: constants.Language,
 ):
-    translation_query = (
-        select(
-            models.TermDefinition.term,
-            models.TermDefinition.origin_language,
-        )
-        .where(
-            func.clean_text(models.TermDefinitionTranslation.meaning).like(
-                '%' + func.clean_text(text) + '%'
-            ),
-            models.TermDefinition.origin_language == origin_language,
-            models.TermDefinitionTranslation.language == translation_language,
-        )
-        .join(
-            models.TermDefinitionTranslation,
-            models.TermDefinition.id
-            == models.TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
-        )
-    )
-    return session.exec(
-        select(models.Term).where(
-            tuple_(models.Term.term, models.Term.origin_language).in_(translation_query)
-        )
+    return models.Term.search_term_meaning(
+        session,
+        text,
+        origin_language,
+        translation_language,
     )
 
 

@@ -230,7 +230,7 @@ class TestTerm:
 
         assert response.status_code == 404
 
-    def test_search_term(self, client):
+    def test_search_term(self, client, session):
         terms = [
             TermFactory(term=f'test {i}', origin_language=Language.PORTUGUESE)
             for i in range(5)
@@ -239,12 +239,13 @@ class TestTerm:
         response = client.get(
             self.search_term_route(text='test', origin_language=Language.PORTUGUESE)
         )
+        [session.refresh(term) for term in terms]
 
         assert response.status_code == 200
         assert len(response.json()) == 5
         assert [Term(**term) for term in response.json()] == terms
 
-    def test_search_term_special_character(self, client):
+    def test_search_term_special_character(self, client, session):
         terms = [
             TermFactory(term=f'tésté.!#! {i}', origin_language=Language.PORTUGUESE)
             for i in range(5)
@@ -253,6 +254,7 @@ class TestTerm:
         response = client.get(
             self.search_term_route(text='teste', origin_language=Language.PORTUGUESE)
         )
+        [session.refresh(term) for term in terms]
 
         assert response.status_code == 200
         assert len(response.json()) == 5
@@ -269,6 +271,48 @@ class TestTerm:
 
         assert response.status_code == 200
         assert len(response.json()) == 0
+
+    def test_search_term_form(self, client, session):
+        terms = TermFactory.create_batch(5, origin_language=Language.PORTUGUESE)
+        for i, term in enumerate(terms):
+            TermLexicalFactory(
+                term=term.term,
+                origin_language=term.origin_language,
+                type=TermLexicalType.FORM,
+                value=f'testing - {i}',
+            )
+
+        response = client.get(
+            self.search_term_route(text='testing', origin_language=Language.PORTUGUESE)
+        )
+        [session.refresh(term) for term in terms]
+
+        assert response.status_code == 200
+        json = [Term(**term) for term in response.json()]
+        assert len(json) == 5
+        for value in json:
+            assert value in terms
+
+    def test_search_term_form_special_character(self, client, session):
+        terms = TermFactory.create_batch(5, origin_language=Language.PORTUGUESE)
+        for i, term in enumerate(terms):
+            TermLexicalFactory(
+                term=term.term,
+                origin_language=term.origin_language,
+                type=TermLexicalType.FORM,
+                value=f'tÊsTíng!#. {i}',
+            )
+
+        response = client.get(
+            self.search_term_route(text='testing', origin_language=Language.PORTUGUESE)
+        )
+        [session.refresh(term) for term in terms]
+
+        assert response.status_code == 200
+        json = [Term(**term) for term in response.json()]
+        assert len(json) == 5
+        for value in json:
+            assert value in terms
 
     def test_search_meaning(self, client):
         terms = TermFactory.create_batch(origin_language=Language.PORTUGUESE, size=5)
