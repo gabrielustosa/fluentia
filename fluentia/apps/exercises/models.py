@@ -10,7 +10,6 @@ class Exercise(SQLModel, table=True):
     id: int = Field(primary_key=True)
     term: str
     origin_language: Language
-    term_definition_id: int | None = None
     term_example_id: int | None = None
     pronunciation_id: int | None = None
     term_lexical_id: int | None = None
@@ -20,11 +19,6 @@ class Exercise(SQLModel, table=True):
         ForeignKeyConstraint(
             ['term', 'origin_language'],
             ['term.term', 'term.origin_language'],
-            ondelete='CASCADE',
-        ),
-        ForeignKeyConstraint(
-            ['term_definition_id'],
-            ['termdefinition.id'],
             ondelete='CASCADE',
         ),
         ForeignKeyConstraint(

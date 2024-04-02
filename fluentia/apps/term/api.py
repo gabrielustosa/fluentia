@@ -98,23 +98,19 @@ def get_term(
 
     lexical_list = []
     if lexical:
-        lexical_list.extend(
-            [
-                schema.TermLexicalSchema(**lexical.model_dump())
-                for lexical in models.TermLexical.list(session, term, origin_language)
-            ]
-        )
+        lexical_list = [
+            schema.TermLexicalSchema(**lexical.model_dump())
+            for lexical in models.TermLexical.list(session, term, origin_language)
+        ]
 
     pronunciation_list = []
     if pronunciation:
-        pronunciation_list.extend(
-            [
-                schema.PronunciationView(**db_pronunciation.model_dump())
-                for db_pronunciation in models.Pronunciation.list(
-                    session, term=term, origin_language=origin_language
-                )
-            ]
-        )
+        pronunciation_list = [
+            schema.PronunciationView(**db_pronunciation.model_dump())
+            for db_pronunciation in models.Pronunciation.list(
+                session, term=term, origin_language=origin_language
+            )
+        ]
 
     return schema.TermSchema(
         **db_term.model_dump(),
@@ -186,31 +182,24 @@ def create_pronunciation(
     session: Session,
     pronunciation_schema: schema.PronunciationSchema,
 ):
-    link_values = pronunciation_schema.model_link_dump()
-    if 'term' in link_values:
-        models.Term.get_or_404(
-            session=session,
-            term=link_values['term'],
-            origin_language=link_values['origin_language'],
-        )
-    elif 'term_example_id' in link_values:
-        get_object_or_404(
-            models.TermExample, session=session, id=link_values['term_example_id']
-        )
-    elif 'term_lexical_id' in link_values:
-        get_object_or_404(
-            models.TermLexical, session=session, id=link_values['term_lexical_id']
-        )
-
     db_pronuciation = models.Pronunciation.create(
         session, **pronunciation_schema.model_dump()
     )
 
-    models.PronunciationLink.create(
-        session,
-        pronunciation_id=db_pronuciation.id,
-        **link_values,
-    )
+    try:
+        models.PronunciationLink.create(
+            session,
+            pronunciation_id=db_pronuciation.id,
+            **pronunciation_schema.model_link_dump(),
+        )
+    except IntegrityError:
+        session.rollback()
+        session.delete(db_pronuciation)
+        session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='model link was not found.',
+        )
 
     session.refresh(db_pronuciation)
     return schema.PronunciationView(**db_pronuciation.model_dump())

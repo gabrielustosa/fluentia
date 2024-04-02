@@ -29,20 +29,20 @@ exercise_router = APIRouter(prefix='/term/exercise', tags=['exercises'])
     <br> speak-term: O usuário receberá um termo e ele terá que pronúnciar o termo.
     <br> speak-sentence: O usuário receberá uma frase relacionada a um termo e ele terá que pronúnciar o termo.
     <br> mchoice-term: O usuário receberá uma frase com um termo atrelado faltando, no qual será necessário escolher entre as opções qual completa o espaço.
-    <br> mchoice-definition: O usuário receberá uma definição com um termo atrelado, no qual será necessário escolher entre as opções qual dos termos é a definição.
     <br> random: Os exercícios virão aleatoriamente.
     """,
 )
 def get_exercises(
     exerciseType: ExerciseType,
     origin_language: Language,
-    amount: int = Query(default=10, le=256, ge=1, description='Número de exercícios.'),
     term_level: TermLevel | None = Query(
         default=None, description='Filtar por dificuldade do termo.'
     ),
     cardset_id: int | None = Query(
         default=None, description='Filtrar por conjunto de cartas.'
     ),
+    seed: float | None = Query(default=None, le=1, ge=0),
+    page: int | None = Query(default=None, le=1),
 ):
     pass
 

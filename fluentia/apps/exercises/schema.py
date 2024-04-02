@@ -7,8 +7,11 @@ from fluentia.apps.term.schema import TermSchemaBase
 
 
 class ExerciseSchema(BaseModel):
-    amount: int = Field(
+    count: int = Field(
         examples=[21], description='Quantidade real de exercicios retornados.'
+    )
+    next_page: str = Field(
+        examples=['https://example.com/exercises/?page=2&seed=0.71236']
     )
     exercises: list['ExerciseSchemaView']
 

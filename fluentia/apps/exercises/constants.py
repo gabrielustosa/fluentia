@@ -8,5 +8,4 @@ class ExerciseType(str, Enum):
     SPEAK_TERM = 'speak-term'
     SPEAK_SENTENCE = 'speak-sentence'
     MCHOICE_TERM = 'mchoice-term'
-    MCHOICE_DEFINITION = 'mchoice-definition'
     RANDOM = 'random'

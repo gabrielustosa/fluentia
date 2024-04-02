@@ -443,7 +443,7 @@ class TermExampleTranslation(sm.SQLModel, table=True):
 
 
 @listens_for(TermExample, 'after_insert')
-def insert_write_exercise(mapper, connection, target):
+def insert_write_exercise(_, connection, target):
     session = sm.Session(connection)
 
     get_or_create_object(
@@ -452,12 +452,138 @@ def insert_write_exercise(mapper, connection, target):
         term=target.term,
         origin_language=target.origin_language,
         term_example_id=target.id,
-        term_definition_id=target.term_definition_id,
         type=ExerciseType.WRITE_SENTENCE,
     )
 
 
-# @listens_for(PronunciationLink, 'after_insert')
-# @listens_for(PronunciationLink, 'after_update')
-# def insert_listen_exercise(mapper, connection, target):
-#     session = Session(connection)
+@listens_for(PronunciationLink, 'after_insert')
+def insert_listen_exercise(_, connection, target):
+    session = sm.Session(connection)
+
+    pronunciation = session.exec(
+        sm.select(Pronunciation).where(Pronunciation.id == target.pronunciation_id)
+    ).one()
+    if pronunciation.audio_file is None:
+        return
+
+    exercise_attr = {}
+    if target.term:
+        exercise_attr.update(
+            {
+                'term': target.term,
+                'origin_language': target.origin_language,
+                'type': ExerciseType.LISTEN_TERM,
+            }
+        )
+    elif target.term_example_id:
+        db_example = session.exec(
+            sm.select(TermExample).where(TermExample.id == target.term_example_id)
+        ).one()
+
+        exercise_attr.update(
+            {
+                'term': db_example.term,
+                'origin_language': db_example.origin_language,
+                'term_example_id': target.term_example_id,
+                'type': ExerciseType.LISTEN_SENTENCE,
+            }
+        )
+    elif target.term_lexical_id:
+        db_lexical = session.exec(
+            sm.select(TermLexical).where(TermLexical.id == target.term_lexical_id)
+        ).one()
+
+        exercise_attr.update(
+            {
+                'term': db_lexical.term,
+                'origin_language': db_lexical.origin_language,
+                'term_lexical_id': target.term_lexical_id,
+                'type': ExerciseType.LISTEN_TERM,
+            }
+        )
+
+    get_or_create_object(
+        Exercise,
+        session,
+        pronunciation_id=target.pronunciation_id,
+        **exercise_attr,
+    )
+
+
+@listens_for(Pronunciation, 'after_update')
+def update_listen_exercise(_, connection, target):
+    session = sm.Session(connection)
+
+    if not target.audio_file:
+        db_exercise = session.exec(
+            sm.select(Exercise).where(
+                Exercise.pronunciation_id == target.id,
+                Exercise.type.in_(
+                    (ExerciseType.LISTEN_SENTENCE, ExerciseType.LISTEN_TERM)
+                ),
+            )
+        ).first()
+        if db_exercise:
+            session.delete(db_exercise)
+            session.commit()
+    else:
+        link = session.exec(
+            sm.select(PronunciationLink).where(
+                PronunciationLink.pronunciation_id == target.id
+            )
+        ).first()
+        if link:
+            insert_listen_exercise(None, connection, link)
+
+
+@listens_for(Term, 'after_insert')
+def insert_speak_term_exercise(_, connection, target):
+    session = sm.Session(connection)
+
+    get_or_create_object(
+        Exercise,
+        session,
+        term=target.term,
+        origin_language=target.origin_language,
+        type=ExerciseType.SPEAK_TERM,
+    )
+
+
+@listens_for(TermExample, 'after_insert')
+def insert_speak_sentence_exercise(_, connection, target):
+    session = sm.Session(connection)
+
+    get_or_create_object(
+        Exercise,
+        session,
+        term=target.term,
+        origin_language=target.origin_language,
+        term_example_id=target.id,
+        type=ExerciseType.SPEAK_SENTENCE,
+    )
+
+
+@listens_for(TermLexical, 'after_insert')
+def insert_mchoice_term_exercise(_, connection, target):
+    if target.type != constants.TermLexicalType.ANTONYM:
+        return
+
+    session = sm.Session(connection)
+
+    count = session.exec(
+        sm.select(
+            sm.func.count(TermLexical.id),  # pyright: ignore[reportArgumentType]
+        ).where(
+            TermLexical.term == target.term,
+            TermLexical.origin_language == target.origin_language,
+            TermLexical.type == constants.TermLexicalType.ANTONYM,
+        )
+    ).all()[0]
+    if count >= 3:
+        get_or_create_object(
+            Exercise,
+            session,
+            term=target.term,
+            origin_language=target.origin_language,
+            type=ExerciseType.MCHOICE_TERM,
+        )
