@@ -12,15 +12,12 @@ class CardSetSchema(BaseModel):
         default=None, examples=['Um cartão sobre palavras novas.']
     )
     language: Language | None = None
-    tags: list[str] | None = Field(
-        default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
-    )
 
 
 class CardSetSchemaView(CardSetSchema):
     id: int
-    created: datetime
-    modified: datetime
+    created_at: datetime
+    modified_at: datetime | None = None
 
 
 class CardSetSchemaUpdate(BaseModel):
@@ -29,9 +26,6 @@ class CardSetSchemaUpdate(BaseModel):
         default=None, examples=['Um cartão sobre palavras novas.']
     )
     language: Language | None = None
-    tags: list[str] | None = Field(
-        default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
-    )
 
 
 class CardSchema(TermSchemaBase):
@@ -41,22 +35,13 @@ class CardSchema(TermSchemaBase):
         examples=['Casa pode ser um lugar grande.'],
         description='Pode usar HTML para escrevar as notas.',
     )
-    tags: list[str] | None = Field(
-        default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
-    )
 
 
 class CardSchemaView(CardSchema):
     id: int
-    created: datetime
-    modified: datetime
-    tags: list[str] | None = Field(
-        default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
-    )
+    created_at: datetime
+    modified_at: datetime | None = None
 
 
 class CardSchemaUpdate(BaseModel):
     note: str | None = Field(default=None, examples=['Casa pode ser um lugar grande.'])
-    tags: list[str] | None = Field(
-        default_factory=list, examples=[['casa', 'substantivo', 'viagem']]
-    )
