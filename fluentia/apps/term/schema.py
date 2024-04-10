@@ -95,6 +95,7 @@ class TermPronunciationUpdate(BaseModel):
 class TermDefinitionSchema(TermSchemaBase):
     term_level: constants.TermLevel | None = None
     part_of_speech: constants.PartOfSpeech = Field(examples=(['noun']))
+    term_lexical_id: int | None = None
     definition: str = Field(
         examples=['Set of walls, rooms, and roof with specific purpose of habitation.']
     )

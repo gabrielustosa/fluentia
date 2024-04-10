@@ -198,11 +198,17 @@ class TermDefinition(sm.SQLModel, table=True):
     term_level: constants.TermLevel | None = None
     part_of_speech: constants.PartOfSpeech
     definition: str
+    term_lexical_id: int | None = None
 
     __table_args__ = (
         sm.ForeignKeyConstraint(
             ['term', 'origin_language'],
             ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+        sm.ForeignKeyConstraint(
+            ['term_lexical_id'],
+            ['termlexical.id'],
             ondelete='CASCADE',
         ),
     )
@@ -483,7 +489,6 @@ class TermLexical(sm.SQLModel, table=True):
     term: str
     origin_language: constants.Language
     value: str
-    description: str | None = None
     type: constants.TermLexicalType
 
     __table_args__ = (

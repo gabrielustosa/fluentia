@@ -5,6 +5,7 @@ class TermLexicalType(str, Enum):
     SYNONYM = 'synonym'
     ANTONYM = 'antonym'
     FORM = 'form'
+    IDIOM = 'idiom'
 
 
 class TermLevel(str, Enum):
@@ -30,6 +31,7 @@ class PartOfSpeech(str, Enum):
     PREFIX = 'prefix'
     SUFFIX = 'suffix'
     SLANG = 'slang'
+    LEXICAL = 'lexical'
 
 
 class Language(str, Enum):

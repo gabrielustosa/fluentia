@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: c8f9eb59de25
+Revision ID: 1bb4ab1d84b8
 Revises: 
-Create Date: 2024-04-09 21:13:32.903743
+Create Date: 2024-04-10 18:52:17.689204
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c8f9eb59de25'
+revision: str = '1bb4ab1d84b8'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -57,23 +57,12 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('termdefinition',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
-    sa.Column('term_level', sa.Enum('BEGINNER', 'ELEMENTARY', 'INTERMEDIATE', 'UPPER_INTERMEDIATE', 'ADVANCED', 'MASTER', name='termlevel'), nullable=True),
-    sa.Column('part_of_speech', sa.Enum('ADJECTIVE', 'NOUN', 'VERB', 'ADVERB', 'CONJUNCTION', 'PREPOSITION', 'PRONOUN', 'DETERMINER', 'NUMBER', 'PREDETERMINER', 'PREFIX', 'SUFFIX', 'SLANG', name='partofspeech'), nullable=False),
-    sa.Column('definition', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('termlexical',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('value', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('type', sa.Enum('SYNONYM', 'ANTONYM', 'FORM', name='termlexicaltype'), nullable=False),
+    sa.Column('type', sa.Enum('SYNONYM', 'ANTONYM', 'FORM', 'IDIOM', name='termlexicaltype'), nullable=False),
     sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -87,6 +76,18 @@ def upgrade() -> None:
     sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.ForeignKeyConstraint(['cardset_id'], ['cardset.id'], ),
     sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('termdefinition',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
+    sa.Column('term_level', sa.Enum('BEGINNER', 'ELEMENTARY', 'INTERMEDIATE', 'UPPER_INTERMEDIATE', 'ADVANCED', 'MASTER', name='termlevel'), nullable=True),
+    sa.Column('part_of_speech', sa.Enum('ADJECTIVE', 'NOUN', 'VERB', 'ADVERB', 'CONJUNCTION', 'PREPOSITION', 'PRONOUN', 'DETERMINER', 'NUMBER', 'PREDETERMINER', 'PREFIX', 'SUFFIX', 'SLANG', 'LEXICAL', name='partofspeech'), nullable=False),
+    sa.Column('definition', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('term_lexical_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('termdefinitiontranslation',
@@ -167,9 +168,9 @@ def downgrade() -> None:
     op.drop_table('exercise')
     op.drop_table('termexample')
     op.drop_table('termdefinitiontranslation')
+    op.drop_table('termdefinition')
     op.drop_table('card')
     op.drop_table('termlexical')
-    op.drop_table('termdefinition')
     op.drop_table('cardset')
     op.drop_table('user')
     op.drop_table('term')

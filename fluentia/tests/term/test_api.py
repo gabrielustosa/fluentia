@@ -862,6 +862,34 @@ class TestTermDefinition:
         )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_definition_with_lexical_id(
+        self, client, session, generate_payload, token_header
+    ):
+        term = TermFactory()
+        lexical = TermLexicalFactory(
+            term=term.term, origin_language=term.origin_language
+        )
+        payload = generate_payload(
+            TermDefinitionFactory,
+            part_of_speech=PartOfSpeech.LEXICAL,
+            term=term.term,
+            origin_language=term.origin_language,
+        )
+        payload.update(term_lexical_id=lexical.id)
+
+        response = client.post(
+            self.create_definition_route,
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 201
+        assert response.json()['term_lexical_id'] == lexical.id
+        assert_json_response(
+            session, TermDefinition, response.json(), id=response.json()['id']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_definition_already_exists(
         self, client, generate_payload, session, token_header
     ):
