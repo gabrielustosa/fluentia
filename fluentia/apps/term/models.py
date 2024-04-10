@@ -6,7 +6,12 @@ from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term import constants
 from fluentia.apps.term.schema import TermDefinitionSchema, TermExampleSchema
-from fluentia.core.model.shortcut import create, get_or_create_object, update
+from fluentia.core.model.shortcut import (
+    create,
+    get_object_or_404,
+    get_or_create_object,
+    update,
+)
 
 
 class Term(sm.SQLModel, table=True):
@@ -17,18 +22,35 @@ class Term(sm.SQLModel, table=True):
 
     @staticmethod
     def get(session, term, origin_language):
-        return session.exec(
-            sm.select(Term).where(
-                sm.func.clean_text(Term.term) == sm.func.clean_text(term),
+        term_query = (
+            sm.select(Term)
+            .where(
                 Term.origin_language == origin_language,
+                sm.func.clean_text(Term.term) == sm.func.clean_text(term),
             )
-        ).first()
+            .union(
+                sm.select(Term).where(
+                    sm.tuple_(Term.term, Term.origin_language).in_(
+                        sm.select(TermLexical.term, TermLexical.origin_language).where(
+                            sm.func.clean_text(TermLexical.value)
+                            == sm.func.clean_text(term),
+                            TermLexical.origin_language == origin_language,
+                            TermLexical.type == constants.TermLexicalType.FORM,
+                        )
+                    ),
+                )
+            )
+        )
+        obj = session.exec(term_query).first()
+        if obj is not None:
+            obj = Term(**obj._mapping)
+        return obj
 
     @staticmethod
     def get_or_404(session, term, origin_language):
         obj = Term.get(session, term, origin_language)
         if obj is None:
-            raise HTTPException(status_code=404, detail='term was not found.')
+            raise HTTPException(status_code=404, detail='Term does not exists.')
         return obj
 
     @staticmethod
@@ -89,39 +111,6 @@ class Term(sm.SQLModel, table=True):
         )
 
 
-class TermLexical(sm.SQLModel, table=True):
-    id: int = sm.Field(primary_key=True)
-    term: str
-    origin_language: constants.Language
-    value: str
-    type: constants.TermLexicalType
-
-    __table_args__ = (
-        sm.ForeignKeyConstraint(
-            ['term', 'origin_language'],
-            ['term.term', 'term.origin_language'],
-            ondelete='CASCADE',
-        ),
-    )
-
-    @staticmethod
-    def create(session, **data):
-        return create(TermLexical, session, **data)
-
-    @staticmethod
-    def list(session, term, origin_language, type=None):
-        filters = set()
-        if type is not None:
-            filters.add(TermLexical.type == type.lower())
-        return session.exec(
-            sm.select(TermLexical).where(
-                sm.func.clean_text(TermLexical.term) == sm.func.clean_text(term),
-                TermLexical.origin_language == origin_language,
-                *filters,
-            )
-        )
-
-
 class Pronunciation(sm.SQLModel, table=True):
     id: int = sm.Field(primary_key=True)
     audio_file: str | None = None
@@ -140,10 +129,10 @@ class Pronunciation(sm.SQLModel, table=True):
 
     @staticmethod
     def list(session, **link_attributes):
-        filter_term = set()
+        filters = set()
         term = link_attributes.pop('term')
         if term:
-            filter_term.add(
+            filters.add(
                 sm.func.clean_text(PronunciationLink.term) == sm.func.clean_text(term)
             )
         return session.exec(
@@ -151,7 +140,7 @@ class Pronunciation(sm.SQLModel, table=True):
                 Pronunciation.id.in_(
                     sm.select(PronunciationLink.pronunciation_id)
                     .filter_by(**link_attributes)
-                    .where(*filter_term)
+                    .where(*filters)
                 )
             )
         ).all()
@@ -189,6 +178,14 @@ class PronunciationLink(sm.SQLModel, table=True):
 
     @staticmethod
     def create(session, **data):
+        if 'term' in data:
+            db_term = Term.get_or_404(session, data['term'], data['origin_language'])
+            data['term'] = db_term.term
+            data['origin_language'] = db_term.origin_language
+        elif 'term_example_id' in data:
+            get_object_or_404(TermExample, session, id=data['term_example_id'])
+        elif 'term_lexical_id' in data:
+            get_object_or_404(TermLexical, session, id=data['term_lexical_id'])
         return create(PronunciationLink, session, **data)
 
 
@@ -245,7 +242,19 @@ class TermDefinition(sm.SQLModel, table=True):
         ).first()
         if db_definition is not None:
             return db_definition, False
-        return create(TermDefinition, session, **model_schema.model_dump()), True
+        return TermDefinition.create(session, **model_schema.model_dump()), True
+
+    @staticmethod
+    def create(session, **data):
+        db_term = Term.get_or_404(
+            session,
+            term=data['term'],
+            origin_language=data['origin_language'],
+        )
+        data['term'] = db_term.term
+        data['origin_language'] = db_term.origin_language
+
+        return create(TermDefinition, session, **data)
 
     @staticmethod
     def update(session, db_definition, **data):
@@ -369,7 +378,19 @@ class TermExample(sm.SQLModel, table=True):
 
         if db_example is not None:
             return db_example, False
-        return create(TermExample, session, **model_schema.model_dump()), True
+        return TermExample.create(session, **model_schema.model_dump()), True
+
+    @staticmethod
+    def create(session, **data):
+        db_term = Term.get_or_404(
+            session,
+            term=data['term'],
+            origin_language=data['origin_language'],
+        )
+        data['term'] = db_term.term
+        data['origin_language'] = db_term.origin_language
+
+        return create(TermExample, session, **data)
 
     @staticmethod
     def list(
@@ -440,6 +461,48 @@ class TermExampleTranslation(sm.SQLModel, table=True):
             ondelete='CASCADE',
         ),
     )
+
+
+class TermLexical(sm.SQLModel, table=True):
+    id: int = sm.Field(primary_key=True)
+    term: str
+    origin_language: constants.Language
+    value: str
+    description: str | None = None
+    type: constants.TermLexicalType
+
+    __table_args__ = (
+        sm.ForeignKeyConstraint(
+            ['term', 'origin_language'],
+            ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+    )
+
+    @staticmethod
+    def create(session, **data):
+        db_term = Term.get_or_404(
+            session,
+            term=data['term'],
+            origin_language=data['origin_language'],
+        )
+        data['term'] = db_term.term
+        data['origin_language'] = db_term.origin_language
+
+        return create(TermLexical, session, **data)
+
+    @staticmethod
+    def list(session, term, origin_language, type=None):
+        filters = set()
+        if type is not None:
+            filters.add(TermLexical.type == type.lower())
+        return session.exec(
+            sm.select(TermLexical).where(
+                sm.func.clean_text(TermLexical.term) == sm.func.clean_text(term),
+                TermLexical.origin_language == origin_language,
+                *filters,
+            )
+        )
 
 
 @listens_for(TermExample, 'after_insert')

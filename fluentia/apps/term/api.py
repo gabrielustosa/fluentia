@@ -43,12 +43,14 @@ AdminUser = Annotated[User, Depends(get_current_admin_user)]
     description="""
         <br> Endpoint utilizado para a criação de um termo, palavra ou expressão de um certo idioma.
         <br> A princípio, poderá existir somente um termo com o mesmo valor de expressão de texto para cada idioma.
+        <br> É importante salientar que se o valor do termo enviado for igual a um termo existente no idioma ele será retornado.
+        <br> Da mesma forma, se o valor do termo enviado for igual a uma forma idiomática (TermLexical - Type.Form) relacionada a um termo já existente no idioma, esse termo existente será retornado.
     """,
 )
 def create_term(
-    term_schema: schema.TermSchemaBase,
     user: AdminUser,
     session: Session,
+    term_schema: schema.TermSchemaBase,
 ):
     db_term, created = models.Term.get_or_create(session, **term_schema.model_dump())
     return JSONResponse(
@@ -186,20 +188,11 @@ def create_pronunciation(
         session, **pronunciation_schema.model_dump()
     )
 
-    try:
-        models.PronunciationLink.create(
-            session,
-            pronunciation_id=db_pronuciation.id,
-            **pronunciation_schema.model_link_dump(),
-        )
-    except IntegrityError:
-        session.rollback()
-        session.delete(db_pronuciation)
-        session.commit()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail='model link was not found.',
-        )
+    models.PronunciationLink.create(
+        session,
+        pronunciation_id=db_pronuciation.id,
+        **pronunciation_schema.model_link_dump(),
+    )
 
     session.refresh(db_pronuciation)
     return schema.PronunciationView(**db_pronuciation.model_dump())
@@ -213,7 +206,7 @@ def create_pronunciation(
     summary='Consulta das pronúncias.',
     description='Endpoint utilizado para consultar pronúncias com áudio, fonemas e descrição sobre um determinado modelo.',
 )
-def get_pronunciation(
+def list_pronunciation(
     session: Session,
     pronunciation_schema: schema.PronunciationLinkSchema = Depends(),
 ):
@@ -269,16 +262,10 @@ def update_pronunciation(
     description='Endpoint utilizado para criar uma definição de um certo termo de um determinado idioma.',
 )
 def create_definition(
-    session: Session,
     user: AdminUser,
+    session: Session,
     definition_schema: schema.TermDefinitionSchema,
 ):
-    models.Term.get_or_404(
-        session,
-        term=definition_schema.term,
-        origin_language=definition_schema.origin_language,
-    )
-
     db_definition, created = models.TermDefinition.get_or_create(
         session, definition_schema
     )
@@ -341,7 +328,7 @@ def create_definition_translation(
     summary='Consulta das definições de um termo.',
     description='Endpoint utilizado para consultar as definição de um certo termo de um determinado idioma, sendo possível escolher a linguagem de tradução.',
 )
-def get_definition(
+def list_definition(
     session: Session,
     term: str,
     origin_language: constants.Language,
@@ -467,12 +454,6 @@ def create_example(
     session: Session,
     example_schema: schema.TermExampleSchema,
 ):
-    models.Term.get_or_404(
-        session=session,
-        term=example_schema.term,
-        origin_language=example_schema.origin_language,
-    )
-
     db_example, created = models.TermExample.get_or_create(session, example_schema)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -509,7 +490,9 @@ def create_example_translation(
     translation_schema: schema.TermExampleTranslationSchema,
 ):
     get_object_or_404(
-        models.TermExample, session, id=translation_schema.term_example_id
+        models.TermExample,
+        session,
+        id=translation_schema.term_example_id,
     )
 
     try:
@@ -531,7 +514,7 @@ def create_example_translation(
     summary='Consulta de exemplos sobre um termo.',
     description='Endpoint utilizado para consultar exemplos de termos ou definições.',
 )
-def get_example(
+def list_example(
     session: Session,
     term: str,
     origin_language: constants.Language,
@@ -648,14 +631,10 @@ def update_example_translation(
     description='Endpoint utilizado para criação de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
 def create_lexical(
-    lexical_schema: schema.TermLexicalSchema, session: Session, user: AdminUser
+    user: AdminUser,
+    session: Session,
+    lexical_schema: schema.TermLexicalSchema,
 ):
-    models.Term.get_or_404(
-        session=session,
-        term=lexical_schema.term,
-        origin_language=lexical_schema.origin_language,
-    )
-
     return models.TermLexical.create(session, **lexical_schema.model_dump())
 
 

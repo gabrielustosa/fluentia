@@ -4,6 +4,7 @@ import sqlmodel as sm
 from fastapi import HTTPException, status
 
 from fluentia.apps.term.constants import Language
+from fluentia.apps.term.models import Term
 from fluentia.core.model.shortcut import create, update
 
 
@@ -74,6 +75,14 @@ class Card(sm.SQLModel, table=True):
 
     @staticmethod
     def create(session, **data):
+        db_term = Term.get_or_404(
+            session,
+            term=data['term'],
+            origin_language=data['origin_language'],
+        )
+        data['term'] = db_term.term
+        data['origin_language'] = db_term.origin_language
+
         return create(Card, session, **data)
 
     @staticmethod

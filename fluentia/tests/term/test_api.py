@@ -76,7 +76,9 @@ class TestTerm:
         )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_term_alreaday_exists(self, client, token_header, generate_payload):
+    def test_create_term_already_exists(
+        self, client, session, token_header, generate_payload
+    ):
         payload = generate_payload(TermFactory)
         term = TermFactory(**payload)
 
@@ -85,6 +87,7 @@ class TestTerm:
             json=payload,
             headers=token_header,
         )
+        session.refresh(term)
 
         assert response.status_code == 200
         assert Term(**response.json()) == term
@@ -144,6 +147,23 @@ class TestTerm:
         response = client.get(
             self.get_term_route(term='teste', origin_language=term.origin_language)
         )
+
+        assert response.status_code == 200
+        assert Term(**response.json()) == term
+
+    def test_get_term_with_form(self, client, session):
+        term = TermFactory(origin_language=Language.PORTUGUESE)
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='tÉstÎng!',
+        )
+
+        response = client.get(
+            self.get_term_route(term='testing', origin_language=Language.PORTUGUESE)
+        )
+        session.refresh(term)
 
         assert response.status_code == 200
         assert Term(**response.json()) == term
@@ -414,14 +434,14 @@ class TestTerm:
 class TestPronunciation:
     create_pronunciation_route = app.url_path_for('create_pronunciation')
 
-    def get_pronunciation_route(
+    def list_pronunciation_route(
         self,
         term=None,
         origin_language=None,
         term_example_id=None,
         term_lexical_id=None,
     ):
-        url = app.url_path_for('get_pronunciation')
+        url = app.url_path_for('list_pronunciation')
         return set_url_params(
             url,
             term=term,
@@ -475,13 +495,80 @@ class TestPronunciation:
         )
 
         assert response.status_code == 201
-
         db_pronunciation = get_object_or_404(
             Pronunciation, session=session, id=response.json()['id']
         )
         assert PronunciationView(**response.json()) == PronunciationView(
             **db_pronunciation.model_dump(), **linked_attr
         )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_pronunciation_passing_a_term_form_as_term(
+        self, client, session, generate_payload, token_header
+    ):
+        payload = generate_payload(PronunciationFactory)
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        payload.update(term='testing', origin_language=term.origin_language)
+
+        response = client.post(
+            self.create_pronunciation_route, json=payload, headers=token_header
+        )
+        assert response.status_code == 201
+        db_pronunciation = get_object_or_404(
+            Pronunciation, session=session, id=response.json()['id']
+        )
+        assert PronunciationView(**response.json()) == PronunciationView(
+            **db_pronunciation.model_dump(),
+            term=term.term,
+            origin_language=term.origin_language,
+        )
+
+    def test_create_pronunciation_user_is_not_authenticated(
+        self, client, generate_payload
+    ):
+        payload = generate_payload(PronunciationFactory)
+
+        response = client.post(self.create_pronunciation_route, json=payload)
+
+        assert response.status_code == 401
+
+    def test_create_pronunciation_user_not_enough_permission(
+        self, client, generate_payload, token_header
+    ):
+        payload = generate_payload(PronunciationFactory)
+
+        response = client.post(
+            self.create_pronunciation_route,
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 403
+
+    @parmetrize_pronunciations
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_pronunciation_model_not_found(
+        self, client, session, generate_payload, token_header, item
+    ):
+        payload = generate_payload(PronunciationFactory)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(linked_attr)
+        session.delete(db_factory)
+        session.commit()
+
+        response = client.post(
+            self.create_pronunciation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_pronunciation_model_attribute_not_set(
@@ -532,49 +619,8 @@ class TestPronunciation:
 
         assert response.status_code == 422
 
-    def test_create_pronunciation_user_is_not_authenticated(
-        self, client, generate_payload
-    ):
-        payload = generate_payload(PronunciationFactory)
-
-        response = client.post(self.create_pronunciation_route, json=payload)
-
-        assert response.status_code == 401
-
-    def test_create_pronunciation_user_not_enough_permission(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(PronunciationFactory)
-
-        response = client.post(
-            self.create_pronunciation_route,
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 403
-
     @parmetrize_pronunciations
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_pronunciation_model_not_found(
-        self, client, session, generate_payload, token_header, item
-    ):
-        payload = generate_payload(PronunciationFactory)
-        Factory, attr = item
-        db_factory = Factory()
-        linked_attr = self._get_linked_attributes(attr, db_factory)
-        payload.update(linked_attr)
-        session.delete(db_factory)
-        session.commit()
-
-        response = client.post(
-            self.create_pronunciation_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 404
-
-    @parmetrize_pronunciations
-    def test_get_pronunciation(self, client, session, item):
+    def test_list_pronunciation(self, client, session, item):
         Factory, attr = item
         db_factory = Factory()
         linked_attr = self._get_linked_attributes(attr, db_factory)
@@ -587,7 +633,7 @@ class TestPronunciation:
         session.add_all(links)
         session.commit()
 
-        response = client.get(self.get_pronunciation_route(**linked_attr))
+        response = client.get(self.list_pronunciation_route(**linked_attr))
 
         assert response.status_code == 200
         assert len(response.json()) == 5
@@ -595,7 +641,7 @@ class TestPronunciation:
             Pronunciation(**pronunciation) for pronunciation in response.json()
         ] == pronunciations
 
-    def test_get_pronunciation_term_special_character(self, client, session):
+    def test_list_pronunciation_term_special_character(self, client, session):
         term = TermFactory(term='TésTé*&.')
         session.refresh(term)
         pronunciations = PronunciationFactory.create_batch(5)
@@ -612,7 +658,7 @@ class TestPronunciation:
         session.commit()
 
         response = client.get(
-            self.get_pronunciation_route(
+            self.list_pronunciation_route(
                 term='teste', origin_language=term.origin_language
             )
         )
@@ -624,39 +670,39 @@ class TestPronunciation:
         ] == pronunciations
 
     @parmetrize_pronunciations
-    def test_get_pronunciation_empty(self, client, item):
+    def test_list_pronunciation_empty(self, client, item):
         Factory, attr = item
         db_factory = Factory()
         linked_attr = self._get_linked_attributes(attr, db_factory)
         PronunciationFactory.create_batch(5)
 
-        response = client.get(self.get_pronunciation_route(**linked_attr))
+        response = client.get(self.list_pronunciation_route(**linked_attr))
 
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_get_pronunciation_model_not_set(self, client):
-        response = client.get(self.get_pronunciation_route())
+    def test_list_pronunciation_model_not_set(self, client):
+        response = client.get(self.list_pronunciation_route())
 
         assert response.status_code == 422
 
-    def test_get_pronunciation_term_model_invalid(self, client):
-        response = client.get(self.get_pronunciation_route(term='test'))
+    def test_list_pronunciation_term_model_invalid(self, client):
+        response = client.get(self.list_pronunciation_route(term='test'))
 
         assert response.status_code == 422
 
-    def test_get_pronunciation_term_model_multiple_invalid(self, client):
+    def test_list_pronunciation_term_model_multiple_invalid(self, client):
         response = client.get(
-            self.get_pronunciation_route(
+            self.list_pronunciation_route(
                 term='test', origin_language=Language.PORTUGUESE, term_example_id=1
             )
         )
 
         assert response.status_code == 422
 
-    def test_get_pronunciation_multiple_models(self, client):
+    def test_list_pronunciation_multiple_models(self, client):
         response = client.get(
-            self.get_pronunciation_route(term_example_id=1, term_lexical_id=2)
+            self.list_pronunciation_route(term_example_id=1, term_lexical_id=2)
         )
 
         assert response.status_code == 422
@@ -734,7 +780,7 @@ class TestTermDefinition:
         'create_definition_translation'
     )
 
-    def get_definition_route(
+    def list_definition_route(
         self,
         term=None,
         origin_language=None,
@@ -742,7 +788,7 @@ class TestTermDefinition:
         part_of_speech=None,
         term_level=None,
     ):
-        url = app.url_path_for('get_definition')
+        url = app.url_path_for('list_definition')
         return set_url_params(
             url,
             term=term,
@@ -763,7 +809,7 @@ class TestTermDefinition:
         )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_definition(self, session, client, generate_payload, token_header):
+    def test_create_definition(self, client, session, generate_payload, token_header):
         payload = generate_payload(TermDefinitionFactory)
         TermFactory(term=payload['term'], origin_language=payload['origin_language'])
 
@@ -800,6 +846,33 @@ class TestTermDefinition:
 
         assert response.status_code == 200
         assert TermDefinition(**response.json()) == db_definition
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_definition_passing_a_term_form_as_term(
+        self, client, session, generate_payload, token_header
+    ):
+        payload = generate_payload(TermDefinitionFactory)
+        term = TermFactory(
+            term=payload['term'], origin_language=payload['origin_language']
+        )
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        payload.update(term='testing', origin_language=term.origin_language)
+
+        response = client.post(
+            self.create_definition_route,
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 201
+        assert_json_response(
+            session, TermDefinition, response.json(), id=response.json()['id']
+        )
 
     def test_create_definition_user_is_not_authenticated(
         self, client, generate_payload
@@ -906,7 +979,7 @@ class TestTermDefinition:
 
         assert response.status_code == 409
 
-    def test_get_definition(self, client):
+    def test_list_definition(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -914,7 +987,7 @@ class TestTermDefinition:
         TermDefinitionFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term, origin_language=term.origin_language
             )
         )
@@ -925,7 +998,7 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
-    def test_get_definition_term_special_character(self, client):
+    def test_list_definition_term_special_character(self, client):
         term = TermFactory(term='TéStÉ$!.')
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -933,7 +1006,7 @@ class TestTermDefinition:
         TermDefinitionFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term='teste!', origin_language=term.origin_language
             )
         )
@@ -944,7 +1017,7 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
-    def test_get_definition_translation(self, client):
+    def test_list_definition_translation(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -965,7 +1038,7 @@ class TestTermDefinition:
             )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 translation_language=Language.ITALIAN,
@@ -984,12 +1057,12 @@ class TestTermDefinition:
             for definition, translation in zip(definitions, translations)
         ]
 
-    def test_get_definition_empty(self, client):
+    def test_list_definition_empty(self, client):
         term = TermFactory()
         TermDefinitionFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term, origin_language=term.origin_language
             )
         )
@@ -997,14 +1070,14 @@ class TestTermDefinition:
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_get_definition_translation_empty(self, client):
+    def test_list_definition_translation_empty(self, client):
         term = TermFactory()
         TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
         )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 translation_language=Language.ITALIAN,
@@ -1014,7 +1087,7 @@ class TestTermDefinition:
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_get_definition_filter_part_of_speech(self, client):
+    def test_list_definition_filter_part_of_speech(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term,
@@ -1030,7 +1103,7 @@ class TestTermDefinition:
         )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 part_of_speech=PartOfSpeech.ADJECTIVE,
@@ -1043,7 +1116,7 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
-    def test_get_definition_filter_term_level(self, client):
+    def test_list_definition_filter_term_level(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term,
@@ -1059,7 +1132,7 @@ class TestTermDefinition:
         )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 term_level=TermLevel.ADVANCED,
@@ -1072,7 +1145,7 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
-    def test_get_definition_translation_filter_part_of_speech(self, client):
+    def test_list_definition_translation_filter_part_of_speech(self, client):
         term = TermFactory()
         definitions_with_translation = TermDefinitionFactory.create_batch(
             term=term.term,
@@ -1099,7 +1172,7 @@ class TestTermDefinition:
             )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 part_of_speech=PartOfSpeech.ADJECTIVE,
@@ -1121,7 +1194,7 @@ class TestTermDefinition:
             )
         ]
 
-    def test_get_definition_translation_filter_term_level(self, client):
+    def test_list_definition_translation_filter_term_level(self, client):
         term = TermFactory()
         definitions_with_translation = TermDefinitionFactory.create_batch(
             term=term.term,
@@ -1148,7 +1221,7 @@ class TestTermDefinition:
             )
 
         response = client.get(
-            self.get_definition_route(
+            self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 term_level=TermLevel.ADVANCED,
@@ -1320,7 +1393,7 @@ class TestTermExample:
     create_example_route = app.url_path_for('create_example')
     create_example_translation_route = app.url_path_for('create_example_translation')
 
-    def get_example_route(
+    def list_example_route(
         self,
         term=None,
         origin_language=None,
@@ -1328,7 +1401,7 @@ class TestTermExample:
         term_definition_id=None,
         term_lexical_id=None,
     ):
-        url = app.url_path_for('get_example')
+        url = app.url_path_for('list_example')
         return set_url_params(
             url,
             term=term,
@@ -1352,6 +1425,31 @@ class TestTermExample:
     def test_create_example(self, session, client, generate_payload, token_header):
         payload = generate_payload(TermExampleFactory)
         TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        assert_json_response(
+            session, TermExample, response.json(), id=response.json()['id']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_passing_a_term_form_as_term(
+        self, session, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermExampleFactory)
+        term = TermFactory(
+            term=payload['term'], origin_language=payload['origin_language']
+        )
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        payload.update(term='testing', origin_language=term.origin_language)
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1553,7 +1651,7 @@ class TestTermExample:
 
         assert response.status_code == 422
 
-    def test_get_example(self, client):
+    def test_list_example(self, client):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1561,13 +1659,15 @@ class TestTermExample:
         TermExampleFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_example_route(term=term.term, origin_language=term.origin_language)
+            self.list_example_route(
+                term=term.term, origin_language=term.origin_language
+            )
         )
 
         assert response.status_code == 200
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_get_example_term_special_character(self, client):
+    def test_list_example_term_special_character(self, client):
         term = TermFactory(term='TÉstê$!@')
         examples = TermExampleFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1575,13 +1675,13 @@ class TestTermExample:
         TermExampleFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_example_route(term='teste', origin_language=term.origin_language)
+            self.list_example_route(term='teste', origin_language=term.origin_language)
         )
 
         assert response.status_code == 200
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_get_example_with_translation(self, client):
+    def test_list_example_with_translation(self, client):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1602,7 +1702,7 @@ class TestTermExample:
             )
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 translation_language=Language.RUSSIAN,
@@ -1619,18 +1719,20 @@ class TestTermExample:
             for example, translation in zip(examples, translations)
         ]
 
-    def test_get_example_empty(self, client):
+    def test_list_example_empty(self, client):
         term = TermFactory()
         TermExampleFactory.create_batch(size=5)
 
         response = client.get(
-            self.get_example_route(term=term.term, origin_language=term.origin_language)
+            self.list_example_route(
+                term=term.term, origin_language=term.origin_language
+            )
         )
 
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_get_example_empty_translation(self, client):
+    def test_list_example_empty_translation(self, client):
         term = TermFactory()
         TermExampleFactory.create_batch(
             size=5,
@@ -1640,7 +1742,7 @@ class TestTermExample:
         )
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 translation_language=Language.PORTUGUESE,
@@ -1650,7 +1752,7 @@ class TestTermExample:
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_get_example_filter_definition_id(self, client):
+    def test_list_example_filter_definition_id(self, client):
         term = TermFactory()
         definition = TermDefinitionFactory(
             term=term.term, origin_language=term.origin_language
@@ -1668,7 +1770,7 @@ class TestTermExample:
         )
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 term_definition_id=definition.id,
@@ -1678,7 +1780,7 @@ class TestTermExample:
         assert response.status_code == 200
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_get_example_translation_filter_definition_id(self, client):
+    def test_list_example_translation_filter_definition_id(self, client):
         term = TermFactory()
         definition = TermDefinitionFactory(
             term=term.term, origin_language=term.origin_language
@@ -1704,7 +1806,7 @@ class TestTermExample:
             TermExampleTranslationFactory(term_example_id=example.id)
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 translation_language=Language.PORTUGUESE,
@@ -1722,7 +1824,7 @@ class TestTermExample:
             for example, translation in zip(examples, translations)
         ]
 
-    def test_get_example_filter_lexical_id(self, client):
+    def test_list_example_filter_lexical_id(self, client):
         term = TermFactory()
         lexical = TermLexicalFactory(
             term=term.term, origin_language=term.origin_language
@@ -1748,7 +1850,7 @@ class TestTermExample:
             TermExampleTranslationFactory(term_example_id=example.id)
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 term_lexical_id=lexical.id,
@@ -1766,7 +1868,7 @@ class TestTermExample:
             for example, translation in zip(examples, translations)
         ]
 
-    def test_get_example_translation_filter_lexical_id(self, client):
+    def test_list_example_translation_filter_lexical_id(self, client):
         term = TermFactory()
         lexical = TermLexicalFactory(
             term=term.term, origin_language=term.origin_language
@@ -1784,7 +1886,7 @@ class TestTermExample:
         )
 
         response = client.get(
-            self.get_example_route(
+            self.list_example_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 term_lexical_id=lexical.id,
@@ -1961,6 +2063,31 @@ class TestTermLexical:
     def test_create_lexical(self, session, client, generate_payload, token_header):
         payload = generate_payload(TermLexicalFactory)
         TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+
+        response = client.post(
+            self.create_lexical_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        assert_json_response(
+            session, TermLexical, response.json(), id=response.json()['id']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_lexical_passing_a_term_form_as_term(
+        self, session, client, generate_payload, token_header
+    ):
+        payload = generate_payload(TermLexicalFactory)
+        term = TermFactory(
+            term=payload['term'], origin_language=payload['origin_language']
+        )
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        payload.update(term='testing', origin_language=term.origin_language)
 
         response = client.post(
             self.create_lexical_route, json=payload, headers=token_header

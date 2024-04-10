@@ -5,7 +5,7 @@ from sqlmodel import Session as SQLModelSession
 
 from fluentia.apps.card import schema
 from fluentia.apps.card.models import Card, CardSet
-from fluentia.apps.term.models import Term, TermDefinitionTranslation
+from fluentia.apps.term.models import TermDefinitionTranslation
 from fluentia.apps.user.models import User
 from fluentia.apps.user.security import get_current_user
 from fluentia.core.api.constants import (
@@ -150,13 +150,6 @@ def create_card(
     session: Session,
     card_schema: schema.CardSchema,
 ):
-    get_object_or_404(
-        Term,
-        session,
-        term=card_schema.term,
-        origin_language=card_schema.origin_language,
-    )
-
     cardset = get_object_or_404(
         CardSet,
         session,

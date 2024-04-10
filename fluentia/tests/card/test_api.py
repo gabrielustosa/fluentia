@@ -4,6 +4,7 @@ from sqlmodel import select
 
 from fluentia.apps.card.models import Card, CardSet
 from fluentia.apps.card.schema import CardSchemaView, CardSetSchemaView
+from fluentia.apps.term.constants import TermLexicalType
 from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.main import app
 from fluentia.tests.factories.card import CardFactory, CardSetFactory
@@ -11,6 +12,7 @@ from fluentia.tests.factories.term import (
     TermDefinitionFactory,
     TermDefinitionTranslationFactory,
     TermFactory,
+    TermLexicalFactory,
 )
 from fluentia.tests.utils import set_url_params
 
@@ -208,7 +210,7 @@ class TestCardSet:
         assert response.status_code == 404
 
 
-class TestCard1:
+class TestCard:
     create_card_route = app.url_path_for('create_card')
 
     def get_card_route(self, card_id):
@@ -233,6 +235,36 @@ class TestCard1:
             term=term.term,
             origin_language=term.origin_language,
         )
+
+        response = client.post(
+            self.create_card_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 201
+        card = session.exec(
+            select(Card).where(Card.id == response.json()['id'])
+        ).first()
+        assert CardSchemaView(**response.json()) == CardSchemaView(**card.model_dump())
+
+    def test_create_card_passing_a_term_form_as_term(
+        self, session, client, generate_payload, user, token_header
+    ):
+        term = TermFactory()
+        cardset = CardSetFactory(user_id=user.id)
+        payload = generate_payload(
+            CardFactory,
+            cardset_id=cardset.id,
+            term=term.term,
+            origin_language=term.origin_language,
+        )
+
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        payload.update(term='testing', origin_language=term.origin_language)
 
         response = client.post(
             self.create_card_route, json=payload, headers=token_header

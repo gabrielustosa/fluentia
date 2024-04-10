@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: e3d76e7b1c9c
+Revision ID: c8f9eb59de25
 Revises: 
-Create Date: 2024-04-05 17:08:07.186322
+Create Date: 2024-04-09 21:13:32.903743
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'e3d76e7b1c9c'
+revision: str = 'c8f9eb59de25'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -72,6 +72,7 @@ def upgrade() -> None:
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('value', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('type', sa.Enum('SYNONYM', 'ANTONYM', 'FORM', name='termlexicaltype'), nullable=False),
     sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
