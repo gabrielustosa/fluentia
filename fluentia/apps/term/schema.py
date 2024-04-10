@@ -54,7 +54,7 @@ class PronunciationLinkSchema(BaseModel):
         return values
 
     def model_link_dump(self):
-        return super().model_dump(include=self.link_fields, exclude_unset=True)
+        return super().model_dump(include=self.link_fields, exclude_none=True)
 
 
 class PronunciationSchema(PronunciationLinkSchema):

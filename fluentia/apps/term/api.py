@@ -210,7 +210,10 @@ def list_pronunciation(
     session: Session,
     pronunciation_schema: schema.PronunciationLinkSchema = Depends(),
 ):
-    return models.Pronunciation.list(session, **pronunciation_schema.model_dump())
+    return models.Pronunciation.list(
+        session,
+        **pronunciation_schema.model_dump(exclude_none=True),
+    )
 
 
 @term_router.patch(
@@ -240,7 +243,7 @@ def update_pronunciation(
         session,
         db_pronunciation,
         **pronunciation_schema.model_dump(
-            exclude_unset=True,
+            exclude_none=True,
         ),
     )
 
@@ -398,7 +401,7 @@ def update_definition(
         session,
         db_definition,
         **definition_schema.model_dump(
-            exclude_unset=True,
+            exclude_none=True,
         ),
     )
 
@@ -432,7 +435,7 @@ def update_definition_translation(
     return models.TermDefinitionTranslation.update(
         session,
         db_definition_translation,
-        **translation_schema.model_dump(exclude_unset=True),
+        **translation_schema.model_dump(exclude_none=True),
     )
 
 
@@ -645,7 +648,7 @@ def create_lexical(
     summary='Consulta de relação de uma relação lexical.',
     description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
-def get_lexical(
+def list_lexical(
     session: Session,
     term: str,
     origin_language: constants.Language,

@@ -104,7 +104,7 @@ def update_cardset(
     return CardSet.update(
         session,
         db_cardset,
-        **cardset_schema.model_dump(exclude_unset=True),
+        **cardset_schema.model_dump(exclude_none=True),
     )
 
 

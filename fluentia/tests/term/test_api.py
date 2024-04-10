@@ -641,6 +641,43 @@ class TestPronunciation:
             Pronunciation(**pronunciation) for pronunciation in response.json()
         ] == pronunciations
 
+    def test_list_pronunciation_passing_a_term_form_as_term(
+        self,
+        client,
+        session,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        pronunciations = PronunciationFactory.create_batch(5)
+        PronunciationFactory.create_batch(5)
+        links = [
+            PronunciationLink(
+                pronunciation_id=pronunciation.id,
+                term=term.term,  # pyright: ignore[reportArgumentType]
+                origin_language=term.origin_language,  # pyright: ignore[reportArgumentType]
+            )
+            for pronunciation in pronunciations
+        ]
+        session.add_all(links)
+        session.commit()
+
+        response = client.get(
+            self.list_pronunciation_route(
+                term='testing', origin_language=term.origin_language
+            )
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [
+            Pronunciation(**pronunciation) for pronunciation in response.json()
+        ] == pronunciations
+
     def test_list_pronunciation_term_special_character(self, client, session):
         term = TermFactory(term='TésTé*&.')
         session.refresh(term)
@@ -998,6 +1035,34 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
+    def test_list_definition_passing_a_term_form_as_term(
+        self,
+        client,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        definitions = TermDefinitionFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        TermDefinitionFactory.create_batch(size=5)
+
+        response = client.get(
+            self.list_definition_route(
+                term='testing', origin_language=term.origin_language
+            )
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [
+            TermDefinition(**definition) for definition in response.json()
+        ] == definitions
+
     def test_list_definition_term_special_character(self, client):
         term = TermFactory(term='TéStÉ$!.')
         definitions = TermDefinitionFactory.create_batch(
@@ -1040,6 +1105,55 @@ class TestTermDefinition:
         response = client.get(
             self.list_definition_route(
                 term=term.term,
+                origin_language=term.origin_language,
+                translation_language=Language.ITALIAN,
+            )
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [TermDefinitionView(**definition) for definition in response.json()] == [
+            TermDefinitionView(
+                **definition.model_dump(),
+                translation_definition=translation.translation,  # pyright: ignore[reportArgumentType]
+                translation_meaning=translation.meaning,  # pyright: ignore[reportArgumentType]
+                translation_language=translation.language,  # pyright: ignore[reportArgumentType]
+            )
+            for definition, translation in zip(definitions, translations)
+        ]
+
+    def test_list_definition_translation_passing_a_term_form_as_term(
+        self,
+        client,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        definitions = TermDefinitionFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        translations = [
+            TermDefinitionTranslationFactory(
+                language=Language.ITALIAN, term_definition_id=definition.id
+            )
+            for definition in definitions
+        ]
+
+        definitions2 = TermDefinitionFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        for definition in definitions2:
+            TermDefinitionTranslationFactory(
+                language=Language.RUSSIAN, term_definition_id=definition.id
+            )
+
+        response = client.get(
+            self.list_definition_route(
+                term='testing',
                 origin_language=term.origin_language,
                 translation_language=Language.ITALIAN,
             )
@@ -1665,6 +1779,33 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [TermExample(**example) for example in response.json()] == examples
+
+    def test_list_example_passing_a_term_form_as_term(
+        self,
+        client,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        examples = TermExampleFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        TermExampleFactory.create_batch(size=5)
+
+        response = client.get(
+            self.list_example_route(
+                term='testing', origin_language=term.origin_language
+            )
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
         assert [TermExample(**example) for example in response.json()] == examples
 
     def test_list_example_term_special_character(self, client):
@@ -1679,9 +1820,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert len(response.json()) == 5
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_list_example_with_translation(self, client):
+    def test_list_example_translation(self, client):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1710,6 +1852,58 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [TermExampleView(**example) for example in response.json()] == [
+            TermExampleView(
+                **example.model_dump(),
+                translation_language=translation.language,  # pyright: ignore[reportArgumentType]
+                translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
+            )
+            for example, translation in zip(examples, translations)
+        ]
+
+    def test_list_example_translation_passing_a_term_form_as_term(
+        self,
+        client,
+        session,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        examples = TermExampleFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        translations = [
+            TermExampleTranslationFactory(
+                term_example_id=example.id, language=Language.RUSSIAN
+            )
+            for example in examples
+        ]
+
+        examples2 = TermExampleFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        for example in examples2:
+            TermExampleTranslationFactory(
+                term_example_id=example.id, language=Language.SPANISH
+            )
+
+        response = client.get(
+            self.list_example_route(
+                term='testing',
+                origin_language=term.origin_language,
+                translation_language=Language.RUSSIAN,
+            )
+        )
+        [session.refresh(example) for example in examples]
+        [session.refresh(translation) for translation in translations]
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
@@ -2053,8 +2247,8 @@ class TestTermExample:
 class TestTermLexical:
     create_lexical_route = app.url_path_for('create_lexical')
 
-    def get_lexical_route(self, term=None, origin_language=None, type=None):
-        url = app.url_path_for('get_lexical')
+    def list_lexical_route(self, term=None, origin_language=None, type=None):
+        url = app.url_path_for('list_lexical')
         return set_url_params(
             url, term=term, origin_language=origin_language, type=type
         )
@@ -2128,7 +2322,7 @@ class TestTermLexical:
 
         assert response.status_code == 404
 
-    def test_get_lexical(self, client):
+    def test_list_lexical(self, client):
         term = TermFactory()
         term_lexicals = TermLexicalFactory.create_batch(
             term=term.term,
@@ -2138,7 +2332,7 @@ class TestTermLexical:
         )
 
         response = client.get(
-            self.get_lexical_route(
+            self.list_lexical_route(
                 term=term.term,
                 origin_language=term.origin_language,
                 type=TermLexicalType.ANTONYM,
@@ -2149,7 +2343,37 @@ class TestTermLexical:
         assert len(response.json()) == 5
         assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
 
-    def test_get_lexical_term_special_character(self, client):
+    def test_list_lexical_passing_a_term_form_as_term(
+        self,
+        client,
+    ):
+        term = TermFactory()
+        TermLexicalFactory(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.FORM,
+            value='TÉstÎng!#.',
+        )
+        term_lexicals = TermLexicalFactory.create_batch(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.ANTONYM,
+            size=5,
+        )
+
+        response = client.get(
+            self.list_lexical_route(
+                term='testing',
+                origin_language=term.origin_language,
+                type=TermLexicalType.ANTONYM,
+            )
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 5
+        assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
+
+    def test_list_lexical_term_special_character(self, client):
         term = TermFactory(term='TésTÊ!#!')
         term_lexicals = TermLexicalFactory.create_batch(
             term=term.term,
@@ -2159,7 +2383,7 @@ class TestTermLexical:
         )
 
         response = client.get(
-            self.get_lexical_route(
+            self.list_lexical_route(
                 term='teste',
                 origin_language=term.origin_language,
                 type=TermLexicalType.ANTONYM,
@@ -2170,9 +2394,9 @@ class TestTermLexical:
         assert len(response.json()) == 5
         assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
 
-    def test_get_lexical_empty(self, client):
+    def test_list_lexical_empty(self, client):
         response = client.get(
-            self.get_lexical_route(term='test', origin_language='pt', type='antonym')
+            self.list_lexical_route(term='test', origin_language='pt', type='antonym')
         )
 
         assert response.status_code == 200

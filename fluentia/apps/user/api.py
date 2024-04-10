@@ -76,7 +76,7 @@ def update_user(
     if user_id != current_user.id:
         raise HTTPException(status_code=401, detail='credentials do not match.')
 
-    for key, value in user_schema.model_dump(exclude_unset=True).items():
+    for key, value in user_schema.model_dump(exclude_none=True).items():
         setattr(current_user, key, value)
 
     session.commit()

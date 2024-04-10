@@ -130,8 +130,11 @@ class Pronunciation(sm.SQLModel, table=True):
     @staticmethod
     def list(session, **link_attributes):
         filters = set()
-        term = link_attributes.pop('term')
-        if term:
+        if 'term' in link_attributes:
+            term = link_attributes.pop('term')
+            db_term = Term.get(session, term, link_attributes['origin_language'])
+            if db_term:
+                term = db_term.term
             filters.add(
                 sm.func.clean_text(PronunciationLink.term) == sm.func.clean_text(term)
             )
@@ -181,7 +184,6 @@ class PronunciationLink(sm.SQLModel, table=True):
         if 'term' in data:
             db_term = Term.get_or_404(session, data['term'], data['origin_language'])
             data['term'] = db_term.term
-            data['origin_language'] = db_term.origin_language
         elif 'term_example_id' in data:
             get_object_or_404(TermExample, session, id=data['term_example_id'])
         elif 'term_lexical_id' in data:
@@ -218,6 +220,9 @@ class TermDefinition(sm.SQLModel, table=True):
             filters.add(TermDefinition.term_level == term_level)
         if part_of_speech:
             filters.add(TermDefinition.part_of_speech == part_of_speech)
+        db_term = Term.get(session, term, origin_language)
+        if db_term:
+            term = db_term.term
 
         query_definition = sm.select(TermDefinition).where(
             sm.func.clean_text(TermDefinition.term) == sm.func.clean_text(term),
@@ -252,7 +257,6 @@ class TermDefinition(sm.SQLModel, table=True):
             origin_language=data['origin_language'],
         )
         data['term'] = db_term.term
-        data['origin_language'] = db_term.origin_language
 
         return create(TermDefinition, session, **data)
 
@@ -297,6 +301,10 @@ class TermDefinitionTranslation(sm.SQLModel, table=True):
             filters.add(TermDefinition.term_level == term_level)
         if part_of_speech:
             filters.add(TermDefinition.part_of_speech == part_of_speech)
+        db_term = Term.get(session, term, origin_language)
+        if db_term:
+            term = db_term.term
+
         query_translation = (
             sm.select(
                 TermDefinition,
@@ -388,7 +396,6 @@ class TermExample(sm.SQLModel, table=True):
             origin_language=data['origin_language'],
         )
         data['term'] = db_term.term
-        data['origin_language'] = db_term.origin_language
 
         return create(TermExample, session, **data)
 
@@ -400,6 +407,10 @@ class TermExample(sm.SQLModel, table=True):
         term_definition_id=None,
         term_lexical_id=None,
     ):
+        db_term = Term.get(session, term, origin_language)
+        if db_term:
+            term = db_term.term
+
         query_example = sm.select(TermExample).where(
             sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
             TermExample.origin_language == origin_language,
@@ -435,6 +446,10 @@ class TermExampleTranslation(sm.SQLModel, table=True):
         term_definition_id=None,
         term_lexical_id=None,
     ):
+        db_term = Term.get(session, term, origin_language)
+        if db_term:
+            term = db_term.term
+
         query_example = (
             sm.select(
                 TermExample,
@@ -487,7 +502,6 @@ class TermLexical(sm.SQLModel, table=True):
             origin_language=data['origin_language'],
         )
         data['term'] = db_term.term
-        data['origin_language'] = db_term.origin_language
 
         return create(TermLexical, session, **data)
 
@@ -496,6 +510,10 @@ class TermLexical(sm.SQLModel, table=True):
         filters = set()
         if type is not None:
             filters.add(TermLexical.type == type.lower())
+        db_term = Term.get(session, term, origin_language)
+        if db_term:
+            term = db_term.term
+
         return session.exec(
             sm.select(TermLexical).where(
                 sm.func.clean_text(TermLexical.term) == sm.func.clean_text(term),
