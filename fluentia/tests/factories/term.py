@@ -79,7 +79,9 @@ class TermDefinitionTranslationFactory(factory.alchemy.SQLAlchemyModelFactory):
         sqlalchemy_session_persistence = 'commit'
 
 
-class TermExampleFactory(TermFactoryBase):
+class TermExampleFactory(factory.alchemy.SQLAlchemyModelFactory):
+    language = fuzzy.FuzzyChoice(Language)
+
     @factory.LazyAttribute
     def example(self):
         sentence = faker.Faker().sentence(nb_words=8)

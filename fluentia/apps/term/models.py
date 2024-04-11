@@ -5,7 +5,6 @@ from sqlalchemy.event import listens_for
 from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term import constants
-from fluentia.apps.term.schema import TermDefinitionSchema, TermExampleSchema
 from fluentia.core.model.shortcut import (
     create,
     get_object_or_404,
@@ -139,13 +138,13 @@ class Pronunciation(sm.SQLModel, table=True):
                 sm.func.clean_text(PronunciationLink.term) == sm.func.clean_text(term)
             )
         return session.exec(
-            sm.select(Pronunciation).where(
-                Pronunciation.id.in_(
-                    sm.select(PronunciationLink.pronunciation_id)
-                    .filter_by(**link_attributes)
-                    .where(*filters)
-                )
+            sm.select(Pronunciation)
+            .join(
+                PronunciationLink,
+                Pronunciation.id == PronunciationLink.pronunciation_id,  # pyright: ignore[reportArgumentType]
             )
+            .filter_by(**link_attributes)
+            .filter(*filters)
         ).all()
 
 
@@ -181,13 +180,26 @@ class PronunciationLink(sm.SQLModel, table=True):
 
     @staticmethod
     def create(session, **data):
-        if 'term' in data:
-            db_term = Term.get_or_404(session, data['term'], data['origin_language'])
-            data['term'] = db_term.term
-        elif 'term_example_id' in data:
-            get_object_or_404(TermExample, session, id=data['term_example_id'])
-        elif 'term_lexical_id' in data:
-            get_object_or_404(TermLexical, session, id=data['term_lexical_id'])
+        try:
+            if 'term' in data:
+                db_term = Term.get_or_404(
+                    session,
+                    data['term'],
+                    data['origin_language'],
+                )
+                data['term'] = db_term.term
+            elif 'term_example_id' in data:
+                get_object_or_404(TermExample, session, id=data['term_example_id'])
+            elif 'term_lexical_id' in data:
+                get_object_or_404(TermLexical, session, id=data['term_lexical_id'])
+        except HTTPException as e:
+            session.rollback()
+            session.exec(
+                sm.delete(Pronunciation).where(
+                    Pronunciation.id == data['pronunciation_id']
+                )
+            )
+            raise e
         return create(PronunciationLink, session, **data)
 
 
@@ -238,22 +250,20 @@ class TermDefinition(sm.SQLModel, table=True):
         return session.exec(query_definition)
 
     @staticmethod
-    def get_or_create(session, model_schema: TermDefinitionSchema):
+    def get_or_create(session, **data):
         db_definition = session.exec(
-            sm.select(TermDefinition)
-            .where(
+            sm.select(TermDefinition).where(
                 sm.func.clean_text(TermDefinition.term)
-                == sm.func.clean_text(model_schema.term),
+                == sm.func.clean_text(data['term']),
                 sm.func.clean_text(TermDefinition.definition)
-                == sm.func.clean_text(model_schema.definition),
-            )
-            .filter_by(
-                **model_schema.model_dump(exclude={'term_level', 'term', 'definition'})
+                == sm.func.clean_text(data['definition']),
+                TermDefinition.origin_language == data['origin_language'],
+                TermDefinition.part_of_speech == data['part_of_speech'],
             )
         ).first()
         if db_definition is not None:
             return db_definition, False
-        return TermDefinition.create(session, **model_schema.model_dump()), True
+        return TermDefinition.create(session, **data), True
 
     @staticmethod
     def create(session, **data):
@@ -335,12 +345,9 @@ class TermDefinitionTranslation(sm.SQLModel, table=True):
             sm.select(
                 TermDefinitionTranslation.meaning,
             )
-            .select_from(
-                sm.join(
-                    TermDefinition,
-                    TermDefinitionTranslation,
-                    TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
-                )
+            .join(
+                TermDefinition,
+                TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
             )
             .where(
                 TermDefinition.term == term,
@@ -353,16 +360,67 @@ class TermDefinitionTranslation(sm.SQLModel, table=True):
 
 class TermExample(sm.SQLModel, table=True):
     id: int = sm.Field(primary_key=True)
-    term: str
-    origin_language: constants.Language
-    term_definition_id: int | None = None
-    term_lexical_id: int | None = sm.Field(foreign_key='termlexical.id', default=None)
+    language: constants.Language
     example: str
+
+    @staticmethod
+    def get_or_create(session, **data):
+        db_example = session.exec(
+            sm.select(TermExample).where(
+                sm.func.clean_text(TermExample.example)
+                == sm.func.clean_text(data['example']),
+                TermExample.language == data['language'],
+            )
+        ).first()
+
+        if db_example is not None:
+            return db_example, False
+        return TermExample.create(session, **data), True
+
+    @staticmethod
+    def create(session, **data):
+        return create(TermExample, session, **data)
+
+    @staticmethod
+    def list(session, **link_attributes):
+        filters = set()
+        if 'term' in link_attributes:
+            term = link_attributes.pop('term')
+            db_term = Term.get(session, term, link_attributes['origin_language'])
+            if db_term:
+                term = db_term.term
+            filters.add(
+                sm.func.clean_text(TermExampleLink.term) == sm.func.clean_text(term)
+            )
+        return session.exec(
+            sm.select(TermExample)
+            .join(TermExampleLink, TermExample.id == TermExampleLink.term_example_id)  # pyright: ignore[reportArgumentType]
+            .filter_by(**link_attributes)
+            .filter(*filters)
+        ).all()
+
+    @staticmethod
+    def update(session, db_example, **data):
+        return update(session, db_example, **data)
+
+
+class TermExampleLink(sm.SQLModel, table=True):
+    id: int = sm.Field(primary_key=True)
+    term_example_id: int
+    term: str | None = None
+    origin_language: constants.Language | None = None
+    term_definition_id: int | None = None
+    term_lexical_id: int | None = None
 
     __table_args__ = (
         sm.ForeignKeyConstraint(
             ['term', 'origin_language'],
             ['term.term', 'term.origin_language'],
+            ondelete='CASCADE',
+        ),
+        sm.ForeignKeyConstraint(
+            ['term_example_id'],
+            ['termexample.id'],
             ondelete='CASCADE',
         ),
         sm.ForeignKeyConstraint(
@@ -378,56 +436,28 @@ class TermExample(sm.SQLModel, table=True):
     )
 
     @staticmethod
-    def get_or_create(session, model_schema: TermExampleSchema):
-        db_example = session.exec(
-            sm.select(TermExample)
-            .where(
-                sm.func.clean_text(TermExample.term)
-                == sm.func.clean_text(model_schema.term),
-                sm.func.clean_text(TermExample.example)
-                == sm.func.clean_text(model_schema.example),
-            )
-            .filter_by(**model_schema.model_dump(exclude={'term', 'example'}))
-        ).first()
-
-        if db_example is not None:
-            return db_example, False
-        return TermExample.create(session, **model_schema.model_dump()), True
-
-    @staticmethod
     def create(session, **data):
-        db_term = Term.get_or_404(
-            session,
-            term=data['term'],
-            origin_language=data['origin_language'],
-        )
-        data['term'] = db_term.term
-
-        return create(TermExample, session, **data)
-
-    @staticmethod
-    def list(
-        session,
-        term,
-        origin_language,
-        term_definition_id=None,
-        term_lexical_id=None,
-    ):
-        db_term = Term.get(session, term, origin_language)
-        if db_term:
-            term = db_term.term
-
-        query_example = sm.select(TermExample).where(
-            sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
-            TermExample.origin_language == origin_language,
-            TermExample.term_definition_id == term_definition_id,
-            TermExample.term_lexical_id == term_lexical_id,
-        )
-        return session.exec(query_example).all()
-
-    @staticmethod
-    def update(session, db_example, **data):
-        return update(session, db_example, **data)
+        try:
+            if 'term' in data:
+                db_term = Term.get_or_404(
+                    session,
+                    data['term'],
+                    data['origin_language'],
+                )
+                data['term'] = db_term.term
+            elif 'term_definition_id' in data:
+                get_object_or_404(
+                    TermDefinition, session, id=data['term_definition_id']
+                )
+            elif 'term_lexical_id' in data:
+                get_object_or_404(TermLexical, session, id=data['term_lexical_id'])
+        except HTTPException as e:
+            session.rollback()
+            session.exec(
+                sm.delete(TermExample).where(TermExample.id == data['term_example_id'])
+            )
+            raise e
+        return create(TermExampleLink, session, **data)
 
 
 class TermExampleTranslation(sm.SQLModel, table=True):
@@ -444,36 +474,33 @@ class TermExampleTranslation(sm.SQLModel, table=True):
         return update(session, db_example, **data)
 
     @staticmethod
-    def list(
-        session,
-        term,
-        origin_language,
-        translation_language,
-        term_definition_id=None,
-        term_lexical_id=None,
-    ):
-        db_term = Term.get(session, term, origin_language)
-        if db_term:
-            term = db_term.term
-
-        query_example = (
+    def list(session, translation_language, **link_attributes):
+        filters = set()
+        if 'term' in link_attributes:
+            term = link_attributes.pop('term')
+            db_term = Term.get(session, term, link_attributes['origin_language'])
+            if db_term:
+                term = db_term.term
+            filters.add(
+                sm.func.clean_text(TermExampleLink.term) == sm.func.clean_text(term)
+            )
+        return session.exec(
             sm.select(
                 TermExample,
                 TermExampleTranslation,
+                TermExampleLink,
             )
             .join(
                 TermExampleTranslation,
                 TermExample.id == TermExampleTranslation.term_example_id,  # pyright: ignore[reportArgumentType]
             )
-            .where(
-                TermExampleTranslation.language == translation_language,
-                sm.func.clean_text(TermExample.term) == sm.func.clean_text(term),
-                TermExample.origin_language == origin_language,
-                TermExample.term_definition_id == term_definition_id,
-                TermExample.term_lexical_id == term_lexical_id,
+            .join(
+                TermExampleLink,
+                TermExample.id == TermExampleLink.term_example_id,  # pyright: ignore[reportArgumentType]
             )
-        )
-        return session.exec(query_example).all()
+            .where(TermExampleTranslation.language == translation_language, *filters)
+            .filter_by(**link_attributes)
+        ).all()
 
     __table_args__ = (
         sm.ForeignKeyConstraint(
@@ -535,8 +562,7 @@ def insert_write_exercise(_, connection, target):
     get_or_create_object(
         Exercise,
         session,
-        term=target.term,
-        origin_language=target.origin_language,
+        language=target.language,
         term_example_id=target.id,
         type=ExerciseType.WRITE_SENTENCE,
     )
@@ -558,6 +584,7 @@ def insert_listen_exercise(_, connection, target):
             {
                 'term': target.term,
                 'origin_language': target.origin_language,
+                'language': target.origin_language,
                 'type': ExerciseType.LISTEN_TERM,
             }
         )
@@ -568,8 +595,7 @@ def insert_listen_exercise(_, connection, target):
 
         exercise_attr.update(
             {
-                'term': db_example.term,
-                'origin_language': db_example.origin_language,
+                'language': db_example.language,
                 'term_example_id': target.term_example_id,
                 'type': ExerciseType.LISTEN_SENTENCE,
             }
@@ -581,8 +607,7 @@ def insert_listen_exercise(_, connection, target):
 
         exercise_attr.update(
             {
-                'term': db_lexical.term,
-                'origin_language': db_lexical.origin_language,
+                'language': db_lexical.origin_language,
                 'term_lexical_id': target.term_lexical_id,
                 'type': ExerciseType.LISTEN_TERM,
             }
@@ -631,6 +656,7 @@ def insert_speak_term_exercise(_, connection, target):
         session,
         term=target.term,
         origin_language=target.origin_language,
+        language=target.origin_language,
         type=ExerciseType.SPEAK_TERM,
     )
 
@@ -642,10 +668,9 @@ def insert_speak_sentence_exercise(_, connection, target):
     get_or_create_object(
         Exercise,
         session,
-        term=target.term,
-        origin_language=target.origin_language,
         term_example_id=target.id,
         type=ExerciseType.SPEAK_SENTENCE,
+        language=target.language,
     )
 
 
@@ -672,4 +697,5 @@ def insert_mchoice_term_exercise(_, connection, target):
             term=target.term,
             origin_language=target.origin_language,
             type=ExerciseType.MCHOICE_TERM,
+            language=target.origin_language,
         )

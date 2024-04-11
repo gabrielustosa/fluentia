@@ -3,7 +3,7 @@ from sqlmodel import select
 from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term.constants import TermLexicalType
-from fluentia.apps.term.models import PronunciationLink
+from fluentia.apps.term.models import PronunciationLink, TermExampleLink
 from fluentia.tests.factories.term import (
     PronunciationFactory,
     TermExampleFactory,
@@ -14,12 +14,15 @@ from fluentia.tests.factories.term import (
 
 def test_write_exercise_event(session):
     example = TermExampleFactory()
+    TermExampleLink.create(
+        session,
+        term_example_id=example.id,
+    )
 
     exercise = session.exec(
         select(Exercise).where(
-            Exercise.term == example.term,
-            Exercise.origin_language == example.origin_language,
             Exercise.term_example_id == example.id,
+            Exercise.language == example.language,
             Exercise.type == ExerciseType.WRITE_SENTENCE,
         )
     ).first()
@@ -42,6 +45,8 @@ def test_listen_exercise_term(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
+            Exercise.pronunciation_id == pronunciation.id,
             Exercise.type == ExerciseType.LISTEN_TERM,
         )
     ).first()
@@ -64,6 +69,7 @@ def test_listen_exercise_audio_file_none(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.LISTEN_TERM,
         )
     ).first()
@@ -72,7 +78,14 @@ def test_listen_exercise_audio_file_none(session):
 
 
 def test_listen_exercise_sentence(session):
+    term = TermFactory()
     example = TermExampleFactory()
+    TermExampleLink.create(
+        session,
+        term=term.term,
+        origin_language=term.origin_language,
+        term_example_id=example.id,
+    )
     pronunciation = PronunciationFactory()
 
     PronunciationLink.create(
@@ -83,9 +96,8 @@ def test_listen_exercise_sentence(session):
 
     exercise = session.exec(
         select(Exercise).where(
-            Exercise.term == example.term,
-            Exercise.origin_language == example.origin_language,
             Exercise.term_example_id == example.id,
+            Exercise.language == example.language,
             Exercise.type == ExerciseType.LISTEN_SENTENCE,
         )
     ).first()
@@ -105,9 +117,8 @@ def test_listen_exercise_lexical(session):
 
     exercise = session.exec(
         select(Exercise).where(
-            Exercise.term == lexical.term,
-            Exercise.origin_language == lexical.origin_language,
             Exercise.term_lexical_id == lexical.id,
+            Exercise.language == lexical.origin_language,
             Exercise.type == ExerciseType.LISTEN_TERM,
         )
     ).first()
@@ -115,7 +126,7 @@ def test_listen_exercise_lexical(session):
     assert exercise is not None
 
 
-def test_update_listen_exercise_lexical(session):
+def test_update_listen_exercise_term(session):
     term = TermFactory()
     pronunciation = PronunciationFactory(audio_file=None)
 
@@ -133,6 +144,7 @@ def test_update_listen_exercise_lexical(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.LISTEN_TERM,
         )
     ).first()
@@ -140,7 +152,7 @@ def test_update_listen_exercise_lexical(session):
     assert exercise is not None
 
 
-def test_update_none_listen_exercise_lexical(session):
+def test_update_none_listen_exercise_term(session):
     term = TermFactory()
     pronunciation = PronunciationFactory()
 
@@ -158,6 +170,7 @@ def test_update_none_listen_exercise_lexical(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.LISTEN_TERM,
         )
     ).first()
@@ -172,6 +185,7 @@ def test_speak_exercise_term(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.SPEAK_TERM,
         )
     ).first()
@@ -181,11 +195,14 @@ def test_speak_exercise_term(session):
 
 def test_speak_exercise_sentence(session):
     example = TermExampleFactory()
+    TermExampleLink.create(
+        session,
+        term_example_id=example.id,
+    )
 
     exercise = session.exec(
         select(Exercise).where(
-            Exercise.term == example.term,
-            Exercise.origin_language == example.origin_language,
+            Exercise.language == example.language,
             Exercise.term_example_id == example.id,
             Exercise.type == ExerciseType.SPEAK_SENTENCE,
         )

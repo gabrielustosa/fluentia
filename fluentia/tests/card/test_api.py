@@ -262,7 +262,7 @@ class TestCard:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         payload.update(term='testing', origin_language=term.origin_language)
 

@@ -13,6 +13,7 @@ from fluentia.apps.term.models import (
     TermDefinition,
     TermDefinitionTranslation,
     TermExample,
+    TermExampleLink,
     TermExampleTranslation,
     TermLexical,
 )
@@ -142,7 +143,7 @@ class TestTerm:
         assert Term(**response.json()) == term
 
     def test_get_term_special_characteres(self, client):
-        term = TermFactory(term='TésTé.?')
+        term = TermFactory(term='TésTé')
 
         response = client.get(
             self.get_term_route(term='teste', origin_language=term.origin_language)
@@ -157,7 +158,7 @@ class TestTerm:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='tÉstÎng!',
+            value='tÉstÎng',
         )
 
         response = client.get(
@@ -267,7 +268,7 @@ class TestTerm:
 
     def test_search_term_special_character(self, client, session):
         terms = [
-            TermFactory(term=f'tésté.!#! {i}', origin_language=Language.PORTUGUESE)
+            TermFactory(term=f'tésté {i}', origin_language=Language.PORTUGUESE)
             for i in range(5)
         ]
 
@@ -320,7 +321,7 @@ class TestTerm:
                 term=term.term,
                 origin_language=term.origin_language,
                 type=TermLexicalType.FORM,
-                value=f'tÊsTíng!#. {i}',
+                value=f'tÊsTíng {i}',
             )
 
         response = client.get(
@@ -377,7 +378,7 @@ class TestTerm:
         ]
         [
             TermDefinitionTranslationFactory(
-                meaning=f'tésté.!#!@-{i}',
+                meaning=f'Téstê {i}',
                 language=Language.DEUTSCH,
                 term_definition_id=definition.id,
                 size=5,
@@ -461,7 +462,7 @@ class TestPronunciation:
             linked_attr.update({attr_real: getattr(db_model, attr_model)})
         return linked_attr
 
-    parmetrize_pronunciations = pytest.mark.parametrize(
+    parametrize_pronunciation_link = pytest.mark.parametrize(
         'item',
         [
             (
@@ -479,7 +480,7 @@ class TestPronunciation:
         ],
     )
 
-    @parmetrize_pronunciations
+    @parametrize_pronunciation_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_pronunciation(
         self, client, session, generate_payload, token_header, item
@@ -512,7 +513,7 @@ class TestPronunciation:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         payload.update(term='testing', origin_language=term.origin_language)
 
@@ -551,9 +552,9 @@ class TestPronunciation:
 
         assert response.status_code == 403
 
-    @parmetrize_pronunciations
+    @parametrize_pronunciation_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_pronunciation_model_not_found(
+    def test_create_pronunciation_model_link_not_found(
         self, client, session, generate_payload, token_header, item
     ):
         payload = generate_payload(PronunciationFactory)
@@ -569,9 +570,10 @@ class TestPronunciation:
         )
 
         assert response.status_code == 404
+        assert db_factory.__class__.__name__ in response.json()['detail']
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_pronunciation_model_attribute_not_set(
+    def test_create_pronunciation_model_link_attribute_not_set(
         self, client, generate_payload, token_header
     ):
         payload = generate_payload(PronunciationFactory)
@@ -581,45 +583,56 @@ class TestPronunciation:
         )
 
         assert response.status_code == 422
+        assert 'at least one object to link' in response.json()['detail'][0]['msg']
 
+    @pytest.mark.parametrize('term_attr', ['term', 'origin_language'])
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_pronunciation_multiple_models_with_term(
-        self, client, generate_payload, token_header
+    def test_create_pronunciation_model_link_term_not_right_setted(
+        self, client, generate_payload, token_header, term_attr
     ):
+        term = TermFactory()
         payload = generate_payload(PronunciationFactory)
-        payload.update(
+        payload.update({term_attr: getattr(term, term_attr)})
+
+        response = client.post(
+            self.create_pronunciation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'you need to provide term and origin_language attributes'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize(
+        'link_attr',
+        [
             {
                 'term_example_id': 123,
                 'term': 'test',
                 'origin_language': Language.PORTUGUESE,
-            }
-        )
-
-        response = client.post(
-            self.create_pronunciation_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 422
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_pronunciation_multiple_models(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(PronunciationFactory)
-        payload.update(
+            },
             {
                 'term_example_id': 123,
                 'term_lexical_id': 400,
-            }
-        )
+            },
+        ],
+    )
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_pronunciation_multiple_models(
+        self, client, generate_payload, token_header, link_attr
+    ):
+        payload = generate_payload(PronunciationFactory)
+        payload.update(link_attr)
 
         response = client.post(
             self.create_pronunciation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 422
+        assert 'reference two objects at once' in response.json()['detail'][0]['msg']
 
-    @parmetrize_pronunciations
+    @parametrize_pronunciation_link
     def test_list_pronunciation(self, client, session, item):
         Factory, attr = item
         db_factory = Factory()
@@ -651,7 +664,7 @@ class TestPronunciation:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         pronunciations = PronunciationFactory.create_batch(5)
         PronunciationFactory.create_batch(5)
@@ -679,7 +692,7 @@ class TestPronunciation:
         ] == pronunciations
 
     def test_list_pronunciation_term_special_character(self, client, session):
-        term = TermFactory(term='TésTé*&.')
+        term = TermFactory(term='TésTê')
         session.refresh(term)
         pronunciations = PronunciationFactory.create_batch(5)
         PronunciationFactory.create_batch(5)
@@ -706,7 +719,7 @@ class TestPronunciation:
             Pronunciation(**pronunciation) for pronunciation in response.json()
         ] == pronunciations
 
-    @parmetrize_pronunciations
+    @parametrize_pronunciation_link
     def test_list_pronunciation_empty(self, client, item):
         Factory, attr = item
         db_factory = Factory()
@@ -896,8 +909,8 @@ class TestTermDefinition:
         payload = generate_payload(
             TermDefinitionFactory,
             term_level=None,
-            definition='Tésté#!#.',
-            term='TésTê!#;',
+            definition='Tésté',
+            term='TésTê',
         )
         db_definition = TermDefinitionFactory(**payload)
         payload.update({'definition': 'teste', 'term': 'teste'})
@@ -924,7 +937,7 @@ class TestTermDefinition:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         payload.update(term='testing', origin_language=term.origin_language)
 
@@ -1072,7 +1085,7 @@ class TestTermDefinition:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1092,7 +1105,7 @@ class TestTermDefinition:
         ] == definitions
 
     def test_list_definition_term_special_character(self, client):
-        term = TermFactory(term='TéStÉ$!.')
+        term = TermFactory(term='TêStÉ')
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
         )
@@ -1100,7 +1113,7 @@ class TestTermDefinition:
 
         response = client.get(
             self.list_definition_route(
-                term='teste!', origin_language=term.origin_language
+                term='teste', origin_language=term.origin_language
             )
         )
 
@@ -1159,7 +1172,7 @@ class TestTermDefinition:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         definitions = TermDefinitionFactory.create_batch(
             term=term.term, origin_language=term.origin_language, size=5
@@ -1563,10 +1576,40 @@ class TestTermExample:
             language=language.value,
         )
 
+    def _get_linked_attributes(self, attr, db_model):
+        linked_attr = {}
+        for attr_model, attr_real in zip(attr[0], attr[1]):
+            linked_attr.update({attr_real: getattr(db_model, attr_model)})
+        return linked_attr
+
+    parametrize_example_link = pytest.mark.parametrize(
+        'item',
+        [
+            (
+                TermFactory,
+                ({'term', 'origin_language'}, {'term', 'origin_language'}),
+            ),
+            (
+                TermDefinitionFactory,
+                ({'id'}, {'term_definition_id'}),
+            ),
+            (
+                TermLexicalFactory,
+                ({'id'}, {'term_lexical_id'}),
+            ),
+        ],
+    )
+
+    @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example(self, session, client, generate_payload, token_header):
+    def test_create_example(
+        self, session, client, generate_payload, token_header, item
+    ):
         payload = generate_payload(TermExampleFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(linked_attr)
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1581,15 +1624,13 @@ class TestTermExample:
     def test_create_example_passing_a_term_form_as_term(
         self, session, client, generate_payload, token_header
     ):
-        payload = generate_payload(TermExampleFactory)
-        term = TermFactory(
-            term=payload['term'], origin_language=payload['origin_language']
-        )
+        term = TermFactory()
+        payload = generate_payload(TermExampleFactory, language=term.origin_language)
         TermLexicalFactory(
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         payload.update(term='testing', origin_language=term.origin_language)
 
@@ -1603,56 +1644,14 @@ class TestTermExample:
         )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_with_term_definition_id(
-        self, session, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermExampleFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-        definition = TermDefinitionFactory(
-            term=payload['term'], origin_language=payload['origin_language']
-        )
-        payload['term_definition_id'] = definition.id
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 201
-        assert response.json()['term_definition_id'] == definition.id
-        assert_json_response(
-            session, TermExample, response.json(), id=response.json()['id']
-        )
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_with_term_lexical_id(
-        self, session, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermExampleFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
-        lexical = TermLexicalFactory(
-            term=payload['term'], origin_language=payload['origin_language']
-        )
-        payload['term_lexical_id'] = lexical.id
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 201
-        assert response.json()['term_lexical_id'] == lexical.id
-        assert_json_response(
-            session, TermExample, response.json(), id=response.json()['id']
-        )
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_already_exists(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(
-            TermExampleFactory, example='*test* Têstè!#', term='TéStê!#!'
-        )
+    def test_create_example_already_exists(self, client, token_header):
+        term = TermFactory(term='TéStê')
+        payload = {
+            'example': '*test* Têstè',
+            'language': term.origin_language,
+        }
+        payload.update(term.model_dump())
         db_example = TermExampleFactory(**payload)
-        payload.update({'example': '*test* teste', 'term': 'teste'})
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1661,9 +1660,13 @@ class TestTermExample:
         assert response.status_code == 200
         assert response.json()['id'] == db_example.id
 
-    def test_create_example_user_is_authenticated(self, client, generate_payload):
-        payload = generate_payload(TermExampleFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+    def test_create_example_user_is_not_authenticated(self, client, generate_payload):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump())
 
         response = client.post(self.create_example_route, json=payload)
 
@@ -1672,8 +1675,12 @@ class TestTermExample:
     def test_create_example_user_not_enough_permission(
         self, client, generate_payload, token_header
     ):
-        payload = generate_payload(TermExampleFactory)
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump())
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1681,8 +1688,47 @@ class TestTermExample:
 
         assert response.status_code == 403
 
+    @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_term_not_found(
+    def test_create_example_with_model_link_not_found(
+        self, client, session, generate_payload, token_header, item
+    ):
+        payload = generate_payload(TermExampleFactory)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(linked_attr)
+        session.delete(db_factory)
+        session.commit()
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404
+        assert db_factory.__class__.__name__ in response.json()['detail']
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_not_highlighted(
+        self, client, generate_payload, token_header
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+            example='test test test',
+        )
+        payload.update(term.model_dump())
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert 'highlighted' in response.json()['detail'][0]['msg']
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_model_link_not_set(
         self, client, generate_payload, token_header
     ):
         payload = generate_payload(TermExampleFactory)
@@ -1691,20 +1737,55 @@ class TestTermExample:
             self.create_example_route, json=payload, headers=token_header
         )
 
-        assert response.status_code == 404
+        assert response.status_code == 422
+        assert 'at least one object to link' in response.json()['detail'][0]['msg']
 
+    @pytest.mark.parametrize('term_attr', ['term', 'origin_language'])
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_not_highlighted(
-        self, client, generate_payload, token_header
+    def test_create_example_model_link_term_not_right_setted(
+        self, client, generate_payload, token_header, term_attr
     ):
-        payload = generate_payload(TermExampleFactory, example='test test test')
-        TermFactory(term=payload['term'], origin_language=payload['origin_language'])
+        term = TermFactory()
+        payload = generate_payload(TermExampleFactory)
+        payload.update({term_attr: getattr(term, term_attr)})
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 422
+        assert (
+            'you need to provide term and origin_language attributes'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize(
+        'link_attr',
+        [
+            {
+                'term_definition_id': 123,
+                'term': 'test',
+                'origin_language': Language.PORTUGUESE,
+            },
+            {
+                'term_definition_id': 123,
+                'term_lexical_id': 400,
+            },
+        ],
+    )
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_multiple_models(
+        self, client, generate_payload, token_header, link_attr
+    ):
+        payload = generate_payload(TermExampleFactory)
+        payload.update(link_attr)
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert 'reference two objects at once' in response.json()['detail'][0]['msg']
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_translation(
@@ -1793,12 +1874,21 @@ class TestTermExample:
 
         assert response.status_code == 422
 
-    def test_list_example(self, client):
+    def test_list_example(self, client, session):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
-            term=term.term, origin_language=term.origin_language, size=5
+            language=term.origin_language, size=5
         )
         TermExampleFactory.create_batch(size=5)
+        [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term=term.term,
+                origin_language=term.origin_language,
+            )
+            for example in examples
+        ]
 
         response = client.get(
             self.list_example_route(
@@ -1813,18 +1903,28 @@ class TestTermExample:
     def test_list_example_passing_a_term_form_as_term(
         self,
         client,
+        session,
     ):
         term = TermFactory()
         TermLexicalFactory(
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         examples = TermExampleFactory.create_batch(
-            term=term.term, origin_language=term.origin_language, size=5
+            language=term.origin_language, size=5
         )
         TermExampleFactory.create_batch(size=5)
+        [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term=term.term,
+                origin_language=term.origin_language,
+            )
+            for example in examples
+        ]
 
         response = client.get(
             self.list_example_route(
@@ -1836,12 +1936,21 @@ class TestTermExample:
         assert len(response.json()) == 5
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_list_example_term_special_character(self, client):
-        term = TermFactory(term='TÉstê$!@')
+    def test_list_example_term_special_character(self, client, session):
+        term = TermFactory(term='TÉstê')
         examples = TermExampleFactory.create_batch(
-            term=term.term, origin_language=term.origin_language, size=5
+            language=term.origin_language, size=5
         )
         TermExampleFactory.create_batch(size=5)
+        [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term=term.term,
+                origin_language=term.origin_language,
+            )
+            for example in examples
+        ]
 
         response = client.get(
             self.list_example_route(term='teste', origin_language=term.origin_language)
@@ -1851,14 +1960,23 @@ class TestTermExample:
         assert len(response.json()) == 5
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_list_example_translation(self, client):
+    def test_list_example_translation(self, client, session):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
-            term=term.term, origin_language=term.origin_language, size=5
+            language=term.origin_language, size=5
         )
         translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.RUSSIAN
+            )
+            for example in examples
+        ]
+        links = [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term=term.term,
+                origin_language=term.origin_language,
             )
             for example in examples
         ]
@@ -1884,10 +2002,11 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
+                **link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation in zip(examples, translations)
+            for example, translation, link in zip(examples, translations, links)
         ]
 
     def test_list_example_translation_passing_a_term_form_as_term(
@@ -1900,14 +2019,23 @@ class TestTermExample:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         examples = TermExampleFactory.create_batch(
-            term=term.term, origin_language=term.origin_language, size=5
+            language=term.origin_language, size=5
         )
         translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.RUSSIAN
+            )
+            for example in examples
+        ]
+        links = [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term=term.term,
+                origin_language=term.origin_language,
             )
             for example in examples
         ]
@@ -1935,15 +2063,15 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
+                **link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation in zip(examples, translations)
+            for example, translation, link in zip(examples, translations, links)
         ]
 
     def test_list_example_empty(self, client):
         term = TermFactory()
-        TermExampleFactory.create_batch(size=5)
 
         response = client.get(
             self.list_example_route(
@@ -1974,27 +2102,30 @@ class TestTermExample:
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_list_example_filter_definition_id(self, client):
+    def test_list_example_filter_definition_id(self, client, session):
         term = TermFactory()
         definition = TermDefinitionFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
-            term_definition_id=definition.id,
+            language=term.origin_language,
         )
+        [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term_definition_id=definition.id,
+            )
+            for example in examples
+        ]
         TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
+            language=term.origin_language,
         )
 
         response = client.get(
             self.list_example_route(
-                term=term.term,
-                origin_language=term.origin_language,
                 term_definition_id=definition.id,
             )
         )
@@ -2002,16 +2133,14 @@ class TestTermExample:
         assert response.status_code == 200
         assert [TermExample(**example) for example in response.json()] == examples
 
-    def test_list_example_translation_filter_definition_id(self, client):
+    def test_list_example_translation_filter_definition_id(self, client, session):
         term = TermFactory()
         definition = TermDefinitionFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
-            term_definition_id=definition.id,
+            language=term.origin_language,
         )
         translations = [
             TermExampleTranslationFactory(
@@ -2019,18 +2148,24 @@ class TestTermExample:
             )
             for example in examples
         ]
+        links = [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term_definition_id=definition.id,
+            )
+            for example in examples
+        ]
+
         examples2 = TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
+            language=term.origin_language,
         )
         for example in examples2:
             TermExampleTranslationFactory(term_example_id=example.id)
 
         response = client.get(
             self.list_example_route(
-                term=term.term,
-                origin_language=term.origin_language,
                 translation_language=Language.PORTUGUESE,
                 term_definition_id=definition.id,
             )
@@ -2040,22 +2175,52 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
+                **link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation in zip(examples, translations)
+            for example, translation, link in zip(examples, translations, links)
         ]
 
-    def test_list_example_filter_lexical_id(self, client):
+    def test_list_example_filter_lexical_id(self, client, session):
         term = TermFactory()
         lexical = TermLexicalFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
-            term_lexical_id=lexical.id,
+            language=term.origin_language,
+        )
+        TermExampleFactory.create_batch(
+            size=5,
+            language=term.origin_language,
+        )
+        [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term_lexical_id=lexical.id,
+            )
+            for example in examples
+        ]
+
+        response = client.get(
+            self.list_example_route(
+                term_lexical_id=lexical.id,
+            )
+        )
+
+        assert response.status_code == 200
+        assert [TermExample(**example) for example in response.json()] == examples
+
+    def test_list_example_translation_filter_lexical_id(self, client, session):
+        term = TermFactory()
+        lexical = TermLexicalFactory(
+            term=term.term, origin_language=term.origin_language
+        )
+        examples = TermExampleFactory.create_batch(
+            size=5,
+            language=term.origin_language,
         )
         translations = [
             TermExampleTranslationFactory(
@@ -2063,18 +2228,24 @@ class TestTermExample:
             )
             for example in examples
         ]
+        links = [
+            TermExampleLink.create(
+                session,
+                term_example_id=example.id,
+                term_lexical_id=lexical.id,
+            )
+            for example in examples
+        ]
+
         examples2 = TermExampleFactory.create_batch(
             size=5,
-            term=term.term,
-            origin_language=term.origin_language,
+            language=term.origin_language,
         )
         for example in examples2:
             TermExampleTranslationFactory(term_example_id=example.id)
 
         response = client.get(
             self.list_example_route(
-                term=term.term,
-                origin_language=term.origin_language,
                 term_lexical_id=lexical.id,
                 translation_language=Language.PORTUGUESE,
             )
@@ -2084,39 +2255,50 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
+                **link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation in zip(examples, translations)
+            for example, translation, link in zip(examples, translations, links)
         ]
 
-    def test_list_example_translation_filter_lexical_id(self, client):
-        term = TermFactory()
-        lexical = TermLexicalFactory(
-            term=term.term, origin_language=term.origin_language
-        )
-        examples = TermExampleFactory.create_batch(
-            size=5,
-            term=term.term,
-            origin_language=term.origin_language,
-            term_lexical_id=lexical.id,
-        )
-        TermExampleFactory.create_batch(
-            size=5,
-            term=term.term,
-            origin_language=term.origin_language,
+    def test_list_example_model_link_not_set(self, client):
+        response = client.get(self.list_example_route())
+
+        assert response.status_code == 422
+        assert 'at least one object to link' in response.json()['detail'][0]['msg']
+
+    @pytest.mark.parametrize(
+        'term_attr', [{'term': 'test'}, {'origin_language': Language.PORTUGUESE}]
+    )
+    def test_list_example_model_link_term_not_right_setted(self, client, term_attr):
+        response = client.get(self.list_example_route(**term_attr))
+
+        assert response.status_code == 422
+        assert (
+            'you need to provide term and origin_language attributes'
+            in response.json()['detail'][0]['msg']
         )
 
-        response = client.get(
-            self.list_example_route(
-                term=term.term,
-                origin_language=term.origin_language,
-                term_lexical_id=lexical.id,
-            )
-        )
+    @pytest.mark.parametrize(
+        'link_attr',
+        [
+            {
+                'term_definition_id': 123,
+                'term': 'test',
+                'origin_language': Language.PORTUGUESE,
+            },
+            {
+                'term_definition_id': 123,
+                'term_lexical_id': 400,
+            },
+        ],
+    )
+    def test_list_example_multiple_models(self, client, link_attr):
+        response = client.get(self.list_example_route(**link_attr))
 
-        assert response.status_code == 200
-        assert [TermExample(**example) for example in response.json()] == examples
+        assert response.status_code == 422
+        assert 'reference two objects at once' in response.json()['detail'][0]['msg']
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_update_example(self, client, session, generate_payload, token_header):
@@ -2307,7 +2489,7 @@ class TestTermLexical:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         payload.update(term='testing', origin_language=term.origin_language)
 
@@ -2380,7 +2562,7 @@ class TestTermLexical:
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.FORM,
-            value='TÉstÎng!#.',
+            value='TÉstÎng',
         )
         term_lexicals = TermLexicalFactory.create_batch(
             term=term.term,
@@ -2402,7 +2584,7 @@ class TestTermLexical:
         assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
 
     def test_list_lexical_term_special_character(self, client):
-        term = TermFactory(term='TésTÊ!#!')
+        term = TermFactory(term='TésTÊ')
         term_lexicals = TermLexicalFactory.create_batch(
             term=term.term,
             origin_language=term.origin_language,

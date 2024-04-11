@@ -270,7 +270,7 @@ def create_definition(
     definition_schema: schema.TermDefinitionSchema,
 ):
     db_definition, created = models.TermDefinition.get_or_create(
-        session, definition_schema
+        session, **definition_schema.model_dump()
     )
     return JSONResponse(
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -450,17 +450,37 @@ def update_definition_translation(
         404: TERM_NOT_FOUND,
     },
     summary='Criação de exemplos sobre um termo.',
-    description='Endpoint utilizado para criação de exemplos para termos ou definições.',
+    description="""
+        <br>Endpoint utilizado para criação de exemplos para termos ou definições.
+        <br> Não poderá constar exemplos repetidos em uma determinada linguagem, para isso se o exemplo enviado já exisitir ele será retornado e não criado.
+        <br> Só poderá ser enviado um dos 3 objetos para ligação com o exemplo fornecido.
+        <br> origin_language, term - Exemplo para termos
+        <br> term_definition_id - Exemplo para definições
+        <br> term_lexical_id - Exemplo para lexical
+    """,
 )
 def create_example(
     user: AdminUser,
     session: Session,
     example_schema: schema.TermExampleSchema,
 ):
-    db_example, created = models.TermExample.get_or_create(session, example_schema)
+    db_example, created = models.TermExample.get_or_create(
+        session, **example_schema.model_dump(include={'language', 'example'})
+    )
+
+    db_link = models.TermExampleLink.create(
+        session,
+        term_example_id=db_example.id,
+        **example_schema.model_dump(exclude={'example', 'language'}, exclude_none=True),
+    )
+
+    session.refresh(db_example)
     return JSONResponse(
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        content=db_example.model_dump(),
+        content={
+            **db_example.model_dump(),
+            **db_link.model_dump(exclude={'term_example_id', 'id'}),
+        },
     )
 
 
@@ -512,50 +532,36 @@ def create_example_translation(
 @term_router.get(
     path='/example',
     status_code=200,
-    response_model=list[schema.TermExampleView],
+    response_model=list[schema.TermExampleTranslationView],
     response_description='Consulta de um exemplo para determinado termo.',
     summary='Consulta de exemplos sobre um termo.',
     description='Endpoint utilizado para consultar exemplos de termos ou definições.',
 )
 def list_example(
     session: Session,
-    term: str,
-    origin_language: constants.Language,
+    example_link_schema: schema.TermExampleLinkSchema = Depends(),
     translation_language: constants.Language | None = Query(
         default=None,
         description='Caso houver exemplos para a tradução requirida ela será retornada.',
-    ),
-    term_definition_id: int | None = Query(
-        default=None,
-        description='Filtrar por exemplos sobre a definição de um termo.',
-    ),
-    term_lexical_id: int | None = Query(
-        default=None,
-        description='Filtrar por lexical sobre um termo.',
     ),
 ):
     if translation_language is None:
         return models.TermExample.list(
             session,
-            term,
-            origin_language,
-            term_definition_id,
-            term_lexical_id,
+            **example_link_schema.model_dump(exclude_none=True),
         )
 
     example_list = []
     for row in models.TermExampleTranslation.list(
         session,
-        term,
-        origin_language,
         translation_language,
-        term_definition_id,
-        term_lexical_id,
+        **example_link_schema.model_dump(exclude_none=True),
     ):
-        db_example, db_example_translation = row
+        db_example, db_example_translation, db_example_link = row
         example_list.append(
-            schema.TermExampleView(
+            schema.TermExampleTranslationView(
                 **db_example.model_dump(),
+                **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=db_example_translation.language,
                 translation_example=db_example_translation.translation,
             )

@@ -8,12 +8,13 @@ from fluentia.apps.term.constants import Language
 
 class Exercise(SQLModel, table=True):
     id: int = Field(primary_key=True)
-    term: str
-    origin_language: Language
+    language: Language
+    type: ExerciseType
+    term: str | None = None
+    origin_language: Language | None = None
     term_example_id: int | None = None
     pronunciation_id: int | None = None
     term_lexical_id: int | None = None
-    type: ExerciseType
 
     __table_args__ = (
         ForeignKeyConstraint(

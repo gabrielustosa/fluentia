@@ -42,8 +42,10 @@ class PronunciationLinkSchema(BaseModel):
             link_attr = sum(x is not None for x in attr)
             if link_attr == 0:
                 raise ValueError('you need to provide at least one object to link.')
-            elif 'term' in valid_values:
-                if 'origin_language' not in valid_values:
+            elif 'term' in valid_values or 'origin_language' in valid_values:
+                if not all(
+                    [valid_values.get('term'), valid_values.get('origin_language')]
+                ):
                     raise ValueError(
                         'you need to provide term and origin_language attributes.'
                     )
@@ -143,9 +145,45 @@ def _check_highlight(value: str) -> str:
     return value
 
 
-class TermExampleSchema(TermSchemaBase):
+class TermExampleLinkSchema(BaseModel):
+    term: str | None = None
+    origin_language: constants.Language | None = None
     term_definition_id: int | None = None
     term_lexical_id: int | None = None
+
+    link_fields: ClassVar[set] = {
+        'term',
+        'origin_language',
+        'term_definition_id',
+        'term_lexical_id',
+    }
+
+    @model_validator(mode='before')
+    def pre_validation(cls, values):
+        if isinstance(values, dict):
+            valid_values = dict(
+                filter(lambda item: item[1] is not None, values.items())
+            )
+            attr = [valid_values.get(field) for field in cls.link_fields]
+            link_attr = sum(x is not None for x in attr)
+            if link_attr == 0:
+                raise ValueError('you need to provide at least one object to link.')
+            elif 'term' in valid_values or 'origin_language' in valid_values:
+                if not all(
+                    [valid_values.get('term'), valid_values.get('origin_language')]
+                ):
+                    raise ValueError(
+                        'you need to provide term and origin_language attributes.'
+                    )
+                if link_attr > 2:
+                    raise ValueError('you cannot reference two objects at once.')
+            elif link_attr > 1:
+                raise ValueError('you cannot reference two objects at once.')
+        return values
+
+
+class TermExampleSchema(TermExampleLinkSchema):
+    language: constants.Language
     example: str = Field(
         examples=["Yesterday a have lunch in my mother's *house*."],
         description="O termo referido do exemplo será circulado pelos caracteres '*'.",
@@ -156,12 +194,6 @@ class TermExampleSchema(TermSchemaBase):
 
 class TermExampleView(TermExampleSchema):
     id: int
-    translation_language: constants.Language | None = None
-    translation_example: str | None = Field(
-        default=None,
-        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
-    )
 
 
 class TermExampleSchemaUpdate(BaseModel):
@@ -183,6 +215,15 @@ class TermExampleTranslationSchema(BaseModel):
     )
 
     translation_validation = field_validator('translation')(_check_highlight)
+
+
+class TermExampleTranslationView(TermExampleView):
+    translation_language: constants.Language | None = None
+    translation_example: str | None = Field(
+        default=None,
+        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
+        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+    )
 
 
 class TermExampleTranslationUpdateSchema(BaseModel):
