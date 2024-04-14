@@ -1,19 +1,14 @@
 import factory
-import faker
 from factory import fuzzy
 
-from fluentia.apps.term.constants import (
-    Language,
-    PartOfSpeech,
-    TermLevel,
-    TermLexicalType,
-)
+from fluentia.apps.term.constants import Language, Level, PartOfSpeech, TermLexicalType
 from fluentia.apps.term.models import (
     Pronunciation,
     Term,
     TermDefinition,
     TermDefinitionTranslation,
     TermExample,
+    TermExampleLink,
     TermExampleTranslation,
     TermLexical,
 )
@@ -60,9 +55,10 @@ class PronunciationFactory(factory.alchemy.SQLAlchemyModelFactory):
 
 
 class TermDefinitionFactory(TermFactoryBase):
-    term_level = fuzzy.FuzzyChoice(TermLevel)
+    level = fuzzy.FuzzyChoice(Level)
     part_of_speech = fuzzy.FuzzyChoice(PartOfSpeech)
     definition = factory.Faker('sentence')
+    extra = {'test': '123', 'test_2': '234'}
 
     class Meta:
         model = TermDefinition
@@ -73,6 +69,7 @@ class TermDefinitionTranslationFactory(factory.alchemy.SQLAlchemyModelFactory):
     language = fuzzy.FuzzyChoice(Language)
     translation = factory.Faker('sentence')
     meaning = factory.Faker('sentence')
+    extra = {'test': '123', 'test_2': '234'}
 
     class Meta:
         model = TermDefinitionTranslation
@@ -81,25 +78,45 @@ class TermDefinitionTranslationFactory(factory.alchemy.SQLAlchemyModelFactory):
 
 class TermExampleFactory(factory.alchemy.SQLAlchemyModelFactory):
     language = fuzzy.FuzzyChoice(Language)
+    example = factory.Faker('sentence', nb_words=8)
+    level = fuzzy.FuzzyChoice(Level)
 
-    @factory.LazyAttribute
-    def example(self):
-        sentence = faker.Faker().sentence(nb_words=8)
-        words = sentence.split()
-        words[0] = '*' + words[0] + '*'
-        return ' '.join(words)
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        link_obj = kwargs.pop('link_obj', None)
+        if link_obj is None:
+            link_obj = TermFactory()
+        link_attr = {}
+        if isinstance(link_obj, Term):
+            link_attr.update(
+                term=link_obj.term, origin_language=link_obj.origin_language
+            )
+        elif isinstance(link_obj, TermDefinition):
+            link_attr.update(term_definition_id=link_obj.id)
+        elif isinstance(link_obj, TermLexical):
+            link_attr.update(term_lexical_id=link_obj.id)
+
+        db_example = super()._create(model_class, *args, **kwargs)
+
+        link = TermExampleLink.create(
+            cls._meta.sqlalchemy_session,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=db_example.id,
+            **link_attr,
+        )
+        db_example.__dict__['link'] = link
+
+        return db_example
 
     class Meta:
         model = TermExample
         sqlalchemy_session_persistence = 'commit'
 
 
-class TermExampleTranslationFactory(TermExampleFactory):
+class TermExampleTranslationFactory(factory.alchemy.SQLAlchemyModelFactory):
     language = fuzzy.FuzzyChoice(Language)
-
-    @factory.LazyAttribute
-    def translation(self):
-        return self.example
+    highlight = [[1, 4], [6, 8]]
+    translation = factory.Faker('sentence')
 
     class Meta:
         model = TermExampleTranslation
@@ -109,7 +126,7 @@ class TermExampleTranslationFactory(TermExampleFactory):
 class TermLexicalFactory(TermFactoryBase):
     value = factory.Faker('sentence')
     type = fuzzy.FuzzyChoice(TermLexicalType)
-    description = factory.Faker('sentence')
+    extra = {'test': '123', 'test_2': '234'}
 
     class Meta:
         model = TermLexical

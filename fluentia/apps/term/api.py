@@ -342,7 +342,7 @@ def list_definition(
     part_of_speech: constants.PartOfSpeech | None = Query(
         default=None, description='Filtrar por classe gramatical.'
     ),
-    term_level: constants.TermLevel | None = Query(
+    level: constants.Level | None = Query(
         default=None, description='Filtrar por level do termo.'
     ),
 ):
@@ -352,7 +352,7 @@ def list_definition(
             term,
             origin_language,
             part_of_speech,
-            term_level,
+            level,
         )
 
     definition_list = []
@@ -361,7 +361,7 @@ def list_definition(
         term,
         origin_language,
         part_of_speech,
-        term_level,
+        level,
         translation_language,
     ).all():
         db_definition, db_definition_translation = row
@@ -448,6 +448,16 @@ def update_definition_translation(
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,
+        409: {
+            'description': 'Modelo já fornecido já está ligado com a frase específicada.',
+            'content': {
+                'application/json': {
+                    'example': {
+                        'detail': 'the example is already linked with this model.'
+                    }
+                }
+            },
+        },
     },
     summary='Criação de exemplos sobre um termo.',
     description="""
@@ -465,13 +475,15 @@ def create_example(
     example_schema: schema.TermExampleSchema,
 ):
     db_example, created = models.TermExample.get_or_create(
-        session, **example_schema.model_dump(include={'language', 'example'})
+        session, **example_schema.model_dump(include={'language', 'example', 'level'})
     )
 
     db_link = models.TermExampleLink.create(
         session,
         term_example_id=db_example.id,
-        **example_schema.model_dump(exclude={'example', 'language'}, exclude_none=True),
+        **example_schema.model_dump(
+            exclude={'example', 'language', 'level'}, exclude_none=True
+        ),
     )
 
     session.refresh(db_example)
@@ -545,13 +557,21 @@ def list_example(
         description='Caso houver exemplos para a tradução requirida ela será retornada.',
     ),
 ):
+    example_list = []
     if translation_language is None:
-        return models.TermExample.list(
+        for row in models.TermExample.list(
             session,
             **example_link_schema.model_dump(exclude_none=True),
-        )
+        ):
+            db_example, db_example_link = row
+            example_list.append(
+                schema.TermExampleTranslationView(
+                    **db_example.model_dump(),
+                    **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
+                )
+            )
+        return example_list
 
-    example_list = []
     for row in models.TermExampleTranslation.list(
         session,
         translation_language,
@@ -564,66 +584,10 @@ def list_example(
                 **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=db_example_translation.language,
                 translation_example=db_example_translation.translation,
+                translation_highlight=db_example_translation.highlight,
             )
         )
     return example_list
-
-
-@term_router.patch(
-    path='/example/{example_id}',
-    status_code=200,
-    response_model=schema.TermExampleView,
-    response_description='Atualização do exemplo do termo ou definição.',
-    responses={
-        401: USER_NOT_AUTHORIZED,
-        403: NOT_ENOUGH_PERMISSION,
-        404: TERM_NOT_FOUND,
-    },
-    summary='Atualizar exemplos.',
-    description='Endpoint para atualizar um exemplo ligado a um termo ou definição.',
-)
-def update_example(
-    user: AdminUser,
-    session: Session,
-    example_id: int,
-    example_schema: schema.TermExampleSchemaUpdate,
-):
-    db_example = get_object_or_404(models.TermExample, session, id=example_id)
-
-    return models.TermExample.update(
-        session, db_example, example=example_schema.example
-    )
-
-
-@term_router.patch(
-    path='/example/translation/{example_id}/{language}',
-    status_code=200,
-    response_model=schema.TermExampleTranslationSchema,
-    response_description='Atualização da tradução do exemplo do termo ou definição.',
-    responses={
-        401: USER_NOT_AUTHORIZED,
-        403: NOT_ENOUGH_PERMISSION,
-        404: TERM_NOT_FOUND,
-    },
-    summary='Atualizar traduções de exemplos.',
-    description='Endpoint para atualizar traduções de um exemplo ligado a um termo ou definição.',
-)
-def update_example_translation(
-    user: AdminUser,
-    session: Session,
-    example_id: int,
-    language: constants.Language,
-    example_schema: schema.TermExampleTranslationUpdateSchema,
-):
-    db_example_translation = get_object_or_404(
-        models.TermExampleTranslation,
-        session,
-        term_example_id=example_id,
-        language=language,
-    )
-    return models.TermExampleTranslation.update(
-        session, db_example_translation, **example_schema.model_dump()
-    )
 
 
 @term_router.post(

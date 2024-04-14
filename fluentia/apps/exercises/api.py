@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query, UploadFile
 
 from fluentia.apps.exercises import schema
 from fluentia.apps.exercises.constants import ExerciseType
-from fluentia.apps.term.constants import Language, TermLevel
+from fluentia.apps.term.constants import Language, Level
 from fluentia.core.api.constants import (
     CARDSET_NOT_FOUND,
     NOT_ENOUGH_PERMISSION,
@@ -23,19 +23,19 @@ exercise_router = APIRouter(prefix='/term/exercise', tags=['exercises'])
     description="""
     <br> Endpoint para retornar exercícios sobre termos. Os exercícios serão montados com termos aleatórios, a menos que seja específicado o cardset_id.
     <br> Os tipos de exercícios disponíveis são:
-    <br> write-sentence: O usuário receberá uma frase na sua tradução embaralhada junto a frase na sua linguagem de origem e terá que reordenar a frase.
+    <br> order-sentence: O usuário receberá uma frase na sua tradução embaralhada junto a frase na sua linguagem de origem e terá que reordenar a frase.
     <br> listen-term: O usuário irá escutar um termo e irá digitar o que escutou.
+    <br> listen-term-mchoice: O usuário receberá um termo e irá escolher entre as opções o que escutou.
     <br> listen-sentence: O usuario irá escutar uma frase relacionada a um termo e irá digitar o que escutou.
     <br> speak-term: O usuário receberá um termo e ele terá que pronúnciar o termo.
     <br> speak-sentence: O usuário receberá uma frase relacionada a um termo e ele terá que pronúnciar o termo.
-    <br> mchoice-term: O usuário receberá uma frase com um termo atrelado faltando, no qual será necessário escolher entre as opções qual completa o espaço.
     <br> random: Os exercícios virão aleatoriamente.
     """,
 )
 def get_exercises(
     exerciseType: ExerciseType,
-    origin_language: Language,
-    term_level: TermLevel | None = Query(
+    language: Language,
+    term_level: Level | None = Query(
         default=None, description='Filtar por dificuldade do termo.'
     ),
     cardset_id: int | None = Query(

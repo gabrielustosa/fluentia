@@ -1,9 +1,8 @@
-from typing import ClassVar
+from typing import ClassVar, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from fluentia.apps.term import constants
-from fluentia.core.api.highlight import check_text_highlight
 
 
 class TermSchemaBase(BaseModel):
@@ -32,28 +31,28 @@ class PronunciationLinkSchema(BaseModel):
         'term_lexical_id',
     }
 
-    @model_validator(mode='before')
-    def pre_validation(cls, values):
-        if isinstance(values, dict):
-            valid_values = dict(
-                filter(lambda item: item[1] is not None, values.items())
-            )
-            attr = [valid_values.get(field) for field in cls.link_fields]
-            link_attr = sum(x is not None for x in attr)
-            if link_attr == 0:
-                raise ValueError('you need to provide at least one object to link.')
-            elif 'term' in valid_values or 'origin_language' in valid_values:
-                if not all(
-                    [valid_values.get('term'), valid_values.get('origin_language')]
-                ):
-                    raise ValueError(
-                        'you need to provide term and origin_language attributes.'
-                    )
-                if link_attr > 2:
-                    raise ValueError('you cannot reference two objects at once.')
-            elif link_attr > 1:
+    @model_validator(mode='after')
+    def link_validation(self) -> Self:
+        link_attributes = {
+            field: getattr(self, field)
+            for field in PronunciationLinkSchema.link_fields
+            if getattr(self, field, None) is not None
+        }
+        link_count = len(link_attributes.values())
+        if link_count == 0:
+            raise ValueError('you need to provide at least one object to link.')
+        elif 'term' in link_attributes or 'origin_language' in link_attributes:
+            if not all(
+                [link_attributes.get('term'), link_attributes.get('origin_language')]
+            ):
+                raise ValueError(
+                    'you need to provide term and origin_language attributes.'
+                )
+            if link_count > 2:
                 raise ValueError('you cannot reference two objects at once.')
-        return values
+        elif link_count > 1:
+            raise ValueError('you cannot reference two objects at once.')
+        return self
 
     def model_link_dump(self):
         return super().model_dump(include=self.link_fields, exclude_none=True)
@@ -95,12 +94,13 @@ class TermPronunciationUpdate(BaseModel):
 
 
 class TermDefinitionSchema(TermSchemaBase):
-    term_level: constants.TermLevel | None = None
     part_of_speech: constants.PartOfSpeech = Field(examples=(['noun']))
-    term_lexical_id: int | None = None
     definition: str = Field(
         examples=['Set of walls, rooms, and roof with specific purpose of habitation.']
     )
+    extra: dict | None = None
+    level: constants.Level | None = None
+    term_lexical_id: int | None = None
 
 
 class TermDefinitionView(TermDefinitionSchema):
@@ -114,12 +114,13 @@ class TermDefinitionView(TermDefinitionSchema):
 
 
 class TermDefinitionSchemaUpdate(BaseModel):
-    term_level: constants.TermLevel | None = None
+    level: constants.Level | None = None
     definition: str | None = Field(
         examples=['Set of walls, rooms, and roof with specific purpose of habitation.'],
         default=None,
     )
     part_of_speech: str | None = Field(default=None, examples=(['substantivo']))
+    extra: dict | None = None
 
 
 class TermDefinitionTranslationSchema(BaseModel):
@@ -129,6 +130,7 @@ class TermDefinitionTranslationSchema(BaseModel):
     translation: str = Field(
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
+    extra: dict | None = None
 
 
 class TermDefinitionTranslationUpdate(BaseModel):
@@ -137,12 +139,43 @@ class TermDefinitionTranslationUpdate(BaseModel):
         default=None,
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
+    extra: dict | None = None
 
 
-def _check_highlight(value: str) -> str:
-    if not check_text_highlight(value):
-        raise ValueError('term is not highlighted in the example.')
-    return value
+class ExampleHighlightValidator:
+    @model_validator(mode='after')
+    def validate_highlight(self) -> Self:
+        example = getattr(self, 'example', None) or getattr(self, 'translation')
+
+        intervals = []
+        for value in self.highlight:
+            if len(value) != 2:
+                raise ValueError(
+                    'highlight must consist of pairs of numbers representing the start and end positions.'
+                )
+
+            v1, v2 = value
+            interval = range(v1, v2 + 1)
+            if any([i in intervals for i in interval]):
+                raise ValueError(
+                    'highlight interval must not overlap with any other intervals in highlight list.'
+                )
+            intervals.extend(interval)
+
+            example_len = len(example) - 1
+            if v1 > example_len or v2 > example_len:
+                raise ValueError(
+                    'highlight cannot be greater than the length of the example.'
+                )
+            if v1 < 0 or v2 < 0:
+                raise ValueError(
+                    'both highlight values must be greater than or equal to 0.'
+                )
+            if v1 > v2:
+                raise ValueError(
+                    'highlight beginning value cannot be greater than the ending value, since it represents the start and end positions.'
+                )
+        return self
 
 
 class TermExampleLinkSchema(BaseModel):
@@ -158,88 +191,72 @@ class TermExampleLinkSchema(BaseModel):
         'term_lexical_id',
     }
 
-    @model_validator(mode='before')
-    def pre_validation(cls, values):
-        if isinstance(values, dict):
-            valid_values = dict(
-                filter(lambda item: item[1] is not None, values.items())
-            )
-            attr = [valid_values.get(field) for field in cls.link_fields]
-            link_attr = sum(x is not None for x in attr)
-            if link_attr == 0:
-                raise ValueError('you need to provide at least one object to link.')
-            elif 'term' in valid_values or 'origin_language' in valid_values:
-                if not all(
-                    [valid_values.get('term'), valid_values.get('origin_language')]
-                ):
-                    raise ValueError(
-                        'you need to provide term and origin_language attributes.'
-                    )
-                if link_attr > 2:
-                    raise ValueError('you cannot reference two objects at once.')
-            elif link_attr > 1:
+    @model_validator(mode='after')
+    def link_validation(self) -> Self:
+        link_attributes = {
+            field: getattr(self, field)
+            for field in TermExampleLinkSchema.link_fields
+            if getattr(self, field, None) is not None
+        }
+        link_count = len(link_attributes.values())
+        if link_count == 0:
+            raise ValueError('you need to provide at least one object to link.')
+        elif 'term' in link_attributes or 'origin_language' in link_attributes:
+            if not all(
+                [link_attributes.get('term'), link_attributes.get('origin_language')]
+            ):
+                raise ValueError(
+                    'you need to provide term and origin_language attributes.'
+                )
+            if link_count > 2:
                 raise ValueError('you cannot reference two objects at once.')
-        return values
+        elif link_count > 1:
+            raise ValueError('you cannot reference two objects at once.')
+        return self
 
 
-class TermExampleSchema(TermExampleLinkSchema):
+class TermExampleSchema(TermExampleLinkSchema, ExampleHighlightValidator):
     language: constants.Language
-    example: str = Field(
-        examples=["Yesterday a have lunch in my mother's *house*."],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+    example: str = Field(examples=["Yesterday a have lunch in my mother's house."])
+    highlight: list[list[int]] = Field(
+        examples=[[4, 8], [11, 16]],
+        description='Highlighted positions in the given sentence where the term appears.',
     )
-
-    example_validation = field_validator('example')(_check_highlight)
+    level: constants.Level | None = None
 
 
 class TermExampleView(TermExampleSchema):
     id: int
 
 
-class TermExampleSchemaUpdate(BaseModel):
-    example: str | None = Field(
-        default=None,
-        examples=["Yesterday a have lunch in my mother's *house*."],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
-    )
-
-    example_validation = field_validator('example')(_check_highlight)
-
-
-class TermExampleTranslationSchema(BaseModel):
+class TermExampleTranslationSchema(BaseModel, ExampleHighlightValidator):
     term_example_id: int
     language: constants.Language
     translation: str = Field(
-        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+        examples=['Ontem eu almoçei na casa da minha mãe.'],
     )
-
-    translation_validation = field_validator('translation')(_check_highlight)
+    highlight: list[list[int]] = Field(
+        examples=[[4, 8], [11, 16]],
+        description='Highlighted positions in the given translation sentence where the term appears.',
+    )
 
 
 class TermExampleTranslationView(TermExampleView):
     translation_language: constants.Language | None = None
     translation_example: str | None = Field(
-        default=None,
-        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+        default=None, examples=['Ontem eu almoçei na casa da minha mãe.']
     )
-
-
-class TermExampleTranslationUpdateSchema(BaseModel):
-    translation: str | None = Field(
+    translation_highlight: list[list[int]] | None = Field(
         default=None,
-        examples=['Ontem eu almoçei na *casa* da minha mãe.'],
-        description="O termo referido do exemplo será circulado pelos caracteres '*'.",
+        examples=[[4, 8], [11, 16]],
+        description='Highlighted positions in the given sentence where the term appears.',
     )
-
-    translation_validation = field_validator('translation')(_check_highlight)
 
 
 class TermLexicalSchema(TermSchemaBase):
     value: str = Field(examples=['Lar'])
     type: constants.TermLexicalType
-    description: str | None = Field(default=None, examples=['verbo - outro nome'])
+    extra: dict | None = None
 
 
 class TermLexicalView(TermLexicalSchema):

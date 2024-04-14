@@ -1,11 +1,6 @@
 import pytest
 
-from fluentia.apps.term.constants import (
-    Language,
-    PartOfSpeech,
-    TermLevel,
-    TermLexicalType,
-)
+from fluentia.apps.term.constants import Language, Level, PartOfSpeech, TermLexicalType
 from fluentia.apps.term.models import (
     Pronunciation,
     PronunciationLink,
@@ -20,6 +15,7 @@ from fluentia.apps.term.models import (
 from fluentia.apps.term.schema import (
     PronunciationView,
     TermDefinitionView,
+    TermExampleTranslationView,
     TermExampleView,
     TermLexicalSchema,
     TermSchema,
@@ -836,7 +832,7 @@ class TestTermDefinition:
         origin_language=None,
         translation_language=None,
         part_of_speech=None,
-        term_level=None,
+        level=None,
     ):
         url = app.url_path_for('list_definition')
         return set_url_params(
@@ -845,7 +841,7 @@ class TestTermDefinition:
             origin_language=origin_language,
             translation_language=translation_language,
             part_of_speech=part_of_speech,
-            term_level=term_level,
+            level=level,
         )
 
     def update_definition_route(self, definition_id):
@@ -908,7 +904,7 @@ class TestTermDefinition:
     ):
         payload = generate_payload(
             TermDefinitionFactory,
-            term_level=None,
+            level=None,
             definition='Tésté',
             term='TésTê',
         )
@@ -1271,26 +1267,26 @@ class TestTermDefinition:
             TermDefinition(**definition) for definition in response.json()
         ] == definitions
 
-    def test_list_definition_filter_term_level(self, client):
+    def test_list_definition_filter_level(self, client):
         term = TermFactory()
         definitions = TermDefinitionFactory.create_batch(
             term=term.term,
             origin_language=term.origin_language,
             size=5,
-            term_level=TermLevel.ADVANCED,
+            level=Level.ADVANCED,
         )
         TermDefinitionFactory.create_batch(
             term=term.term,
             origin_language=term.origin_language,
             size=5,
-            term_level=TermLevel.BEGINNER,
+            level=Level.BEGINNER,
         )
 
         response = client.get(
             self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
-                term_level=TermLevel.ADVANCED,
+                level=Level.ADVANCED,
             )
         )
 
@@ -1349,13 +1345,13 @@ class TestTermDefinition:
             )
         ]
 
-    def test_list_definition_translation_filter_term_level(self, client):
+    def test_list_definition_translation_filter_level(self, client):
         term = TermFactory()
         definitions_with_translation = TermDefinitionFactory.create_batch(
             term=term.term,
             origin_language=term.origin_language,
             size=5,
-            term_level=TermLevel.ADVANCED,
+            level=Level.ADVANCED,
         )
         translations = [
             TermDefinitionTranslationFactory(
@@ -1368,7 +1364,7 @@ class TestTermDefinition:
             term=term.term,
             origin_language=term.origin_language,
             size=5,
-            term_level=TermLevel.BEGINNER,
+            level=Level.BEGINNER,
         )
         for definition in definitions_with_translation2:
             TermDefinitionTranslationFactory(
@@ -1379,7 +1375,7 @@ class TestTermDefinition:
             self.list_definition_route(
                 term=term.term,
                 origin_language=term.origin_language,
-                term_level=TermLevel.ADVANCED,
+                level=Level.ADVANCED,
                 translation_language=Language.ITALIAN,
             )
         )
@@ -1400,10 +1396,11 @@ class TestTermDefinition:
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_update_definition(self, session, client, generate_payload, token_header):
-        definition = TermDefinitionFactory()
+        definition = TermDefinitionFactory(extra={'test1': 1})
         payload = generate_payload(
-            TermDefinitionFactory, include={'definition', 'term_level'}
+            TermDefinitionFactory, include={'definition', 'level'}
         )
+        payload.update(extra={'test2': 2})
 
         response = client.patch(
             self.update_definition_route(definition.id),
@@ -1414,12 +1411,13 @@ class TestTermDefinition:
 
         assert response.status_code == 200
         assert definition.definition == payload['definition']
-        assert definition.term_level == payload['term_level']
+        assert definition.level == payload['level']
+        assert definition.extra == {'test1': 1, 'test2': 2}
 
     def test_update_definition_user_not_authenticated(self, client, generate_payload):
         definition = TermDefinitionFactory()
         payload = generate_payload(
-            TermDefinitionFactory, include={'definition', 'term_level'}
+            TermDefinitionFactory, include={'definition', 'level'}
         )
 
         response = client.patch(
@@ -1434,7 +1432,7 @@ class TestTermDefinition:
     ):
         definition = TermDefinitionFactory()
         payload = generate_payload(
-            TermDefinitionFactory, include={'definition', 'term_level'}
+            TermDefinitionFactory, include={'definition', 'level'}
         )
 
         response = client.patch(
@@ -1448,7 +1446,7 @@ class TestTermDefinition:
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_update_definition_not_found(self, client, generate_payload, token_header):
         payload = generate_payload(
-            TermDefinitionFactory, include={'definition', 'term_level'}
+            TermDefinitionFactory, include={'definition', 'level'}
         )
 
         response = client.patch(
@@ -1465,11 +1463,12 @@ class TestTermDefinition:
     ):
         definition = TermDefinitionFactory()
         definition_translation = TermDefinitionTranslationFactory(
-            term_definition_id=definition.id
+            term_definition_id=definition.id, extra={'test1': 1}
         )
         payload = generate_payload(
             TermDefinitionTranslationFactory, include={'meaning', 'translation'}
         )
+        payload.update(extra={'test2': 2})
 
         response = client.patch(
             self.update_definition_translation_route(
@@ -1483,6 +1482,7 @@ class TestTermDefinition:
         assert response.status_code == 200
         assert definition_translation.meaning == payload['meaning']
         assert definition_translation.translation == payload['translation']
+        assert definition_translation.extra == {'test1': 1, 'test2': 2}
 
     def test_update_definition_translation_user_not_authenticated(
         self, session, client, generate_payload
@@ -1566,16 +1566,6 @@ class TestTermExample:
             term_lexical_id=term_lexical_id,
         )
 
-    def update_example_route(self, example_id):
-        return app.url_path_for('update_example', example_id=example_id)
-
-    def update_example_translation_route(self, example_id, language):
-        return app.url_path_for(
-            'update_example_translation',
-            example_id=example_id,
-            language=language.value,
-        )
-
     def _get_linked_attributes(self, attr, db_model):
         linked_attr = {}
         for attr_model, attr_real in zip(attr[0], attr[1]):
@@ -1609,7 +1599,7 @@ class TestTermExample:
         Factory, attr = item
         db_factory = Factory()
         linked_attr = self._get_linked_attributes(attr, db_factory)
-        payload.update(linked_attr)
+        payload.update(linked_attr, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1632,7 +1622,11 @@ class TestTermExample:
             type=TermLexicalType.FORM,
             value='TÉstÎng',
         )
-        payload.update(term='testing', origin_language=term.origin_language)
+        payload.update(
+            term='testing',
+            origin_language=term.origin_language,
+            highlight=[[1, 4], [6, 8]],
+        )
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1650,7 +1644,7 @@ class TestTermExample:
             'example': '*test* Têstè',
             'language': term.origin_language,
         }
-        payload.update(term.model_dump())
+        payload.update(term.model_dump(), highlight=[[1, 4], [6, 8]])
         db_example = TermExampleFactory(**payload)
 
         response = client.post(
@@ -1666,7 +1660,7 @@ class TestTermExample:
             TermExampleFactory,
             language=term.origin_language,
         )
-        payload.update(term.model_dump())
+        payload.update(term.model_dump(), highlight=[[1, 4], [6, 8]])
 
         response = client.post(self.create_example_route, json=payload)
 
@@ -1680,7 +1674,7 @@ class TestTermExample:
             TermExampleFactory,
             language=term.origin_language,
         )
-        payload.update(term.model_dump())
+        payload.update(term.model_dump(), highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1694,6 +1688,7 @@ class TestTermExample:
         self, client, session, generate_payload, token_header, item
     ):
         payload = generate_payload(TermExampleFactory)
+        payload.update(highlight=[[1, 4], [6, 8]])
         Factory, attr = item
         db_factory = Factory()
         linked_attr = self._get_linked_attributes(attr, db_factory)
@@ -1708,30 +1703,36 @@ class TestTermExample:
         assert response.status_code == 404
         assert db_factory.__class__.__name__ in response.json()['detail']
 
+    @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_not_highlighted(
-        self, client, generate_payload, token_header
+    def test_create_example_with_conflict_link(
+        self, session, client, generate_payload, token_header, item
     ):
-        term = TermFactory()
-        payload = generate_payload(
-            TermExampleFactory,
-            language=term.origin_language,
-            example='test test test',
+        payload = generate_payload(TermExampleFactory)
+        db_example = TermExampleFactory(**payload)
+        Factory, attr = item
+        db_factory = Factory()
+        link_attr = self._get_linked_attributes(attr, db_factory)
+        TermExampleLink.create(
+            session,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=db_example.id,
+            **link_attr,
         )
-        payload.update(term.model_dump())
+        payload.update(link_attr, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
         )
 
-        assert response.status_code == 422
-        assert 'highlighted' in response.json()['detail'][0]['msg']
+        assert response.status_code == 409
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_model_link_not_set(
         self, client, generate_payload, token_header
     ):
         payload = generate_payload(TermExampleFactory)
+        payload.update(highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1747,7 +1748,9 @@ class TestTermExample:
     ):
         term = TermFactory()
         payload = generate_payload(TermExampleFactory)
-        payload.update({term_attr: getattr(term, term_attr)})
+        payload.update(
+            {term_attr: getattr(term, term_attr)}, highlight=[[1, 4], [6, 8]]
+        )
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1778,7 +1781,7 @@ class TestTermExample:
         self, client, generate_payload, token_header, link_attr
     ):
         payload = generate_payload(TermExampleFactory)
-        payload.update(link_attr)
+        payload.update(link_attr, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_route, json=payload, headers=token_header
@@ -1788,12 +1791,121 @@ class TestTermExample:
         assert 'reference two objects at once' in response.json()['detail'][0]['msg']
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_invalid_num_highlight(
+        self, client, generate_payload, token_header
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump(), highlight=[[1, 4, 5], [6, 8]])
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight must consist of pairs of numbers'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize(
+        'highlight', [[[1, 4], [4, 6]], [[10, 14], [13, 16]], [[0, 3], [0, 9]]]
+    )
+    def test_create_example_invalid_highlight_interval(
+        self, client, generate_payload, token_header, highlight
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump(), highlight=highlight)
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight interval must not overlap' in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize('highlight', [[[399, 5]], [[5, 699]]])
+    def test_create_example_invalid_highlight_len(
+        self, client, generate_payload, token_header, highlight
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump(), highlight=highlight)
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight cannot be greater than the length of the example.'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize('highlight', [[[-1, 5]], [[-5, -1]]])
+    def test_create_example_invalid_highlight_values_lower_than_0(
+        self, client, generate_payload, token_header, highlight
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump(), highlight=highlight)
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'both highlight values must be greater than or equal to 0.'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_invalid_highlight_value1_greater_than_value2(
+        self, client, generate_payload, token_header
+    ):
+        term = TermFactory()
+        payload = generate_payload(
+            TermExampleFactory,
+            language=term.origin_language,
+        )
+        payload.update(term.model_dump(), highlight=[[7, 1]])
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight beginning value cannot be greater than the ending value'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_translation(
         self, session, client, generate_payload, token_header
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update({'term_example_id': example.id})
+        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -1813,7 +1925,7 @@ class TestTermExample:
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update({'term_example_id': example.id})
+        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
 
         response = client.post(self.create_example_translation_route, json=payload)
 
@@ -1824,7 +1936,7 @@ class TestTermExample:
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update({'term_example_id': example.id})
+        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -1837,7 +1949,7 @@ class TestTermExample:
         self, client, generate_payload, token_header
     ):
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update({'term_example_id': 123})
+        payload.update(term_example_id=123, highlight=[[1, 4], [6, 8]])
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -1851,7 +1963,7 @@ class TestTermExample:
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update({'term_example_id': example.id})
+        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
         TermExampleTranslationFactory(**payload)
 
         response = client.post(
@@ -1861,34 +1973,106 @@ class TestTermExample:
         assert response.status_code == 409
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation_not_highlighted(
+    def test_create_example_translation_invalid_num_highlight(
         self, client, generate_payload, token_header
     ):
         example = TermExampleFactory()
-        payload = generate_payload(TermExampleTranslationFactory, translation='test')
-        payload.update({'term_example_id': example.id})
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(term_example_id=example.id, highlight=[[1, 4, 5], [6, 8]])
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 422
+        assert (
+            'highlight must consist of pairs of numbers'
+            in response.json()['detail'][0]['msg']
+        )
 
-    def test_list_example(self, client, session):
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize(
+        'highlight', [[[1, 4], [4, 6]], [[10, 14], [13, 16]], [[0, 3], [0, 9]]]
+    )
+    def test_create_example_translation_invalid_highlight_interval(
+        self, client, generate_payload, token_header, highlight
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(term_example_id=example.id, highlight=highlight)
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight interval must not overlap' in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize('highlight', [[[399, 5]], [[5, 699]]])
+    def test_create_example_translation_invalid_highlight_len(
+        self, client, generate_payload, token_header, highlight
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(term_example_id=example.id, highlight=highlight)
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight cannot be greater than the length of the example.'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    @pytest.mark.parametrize('highlight', [[[-1, 5]], [[-5, -1]]])
+    def test_create_example_translation_invalid_highlight_values_lower_than_0(
+        self, client, generate_payload, token_header, highlight
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(term_example_id=example.id, highlight=highlight)
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'both highlight values must be greater than or equal to 0.'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_invalid_highlight_value1_greater_than_value2(
+        self, client, generate_payload, token_header
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(term_example_id=example.id, highlight=[[7, 1]])
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'highlight beginning value cannot be greater than the ending value'
+            in response.json()['detail'][0]['msg']
+        )
+
+    def test_list_example(self, client):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
-            language=term.origin_language, size=5
+            language=term.origin_language,
+            size=5,
+            link_obj=term,
         )
-        TermExampleFactory.create_batch(size=5)
-        [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term=term.term,
-                origin_language=term.origin_language,
-            )
-            for example in examples
-        ]
 
         response = client.get(
             self.list_example_route(
@@ -1898,12 +2082,19 @@ class TestTermExample:
 
         assert response.status_code == 200
         assert len(response.json()) == 5
-        assert [TermExample(**example) for example in response.json()] == examples
+        assert [
+            TermExampleTranslationView(**example) for example in response.json()
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+            )
+            for example in examples
+        ]
 
     def test_list_example_passing_a_term_form_as_term(
         self,
         client,
-        session,
     ):
         term = TermFactory()
         TermLexicalFactory(
@@ -1913,18 +2104,11 @@ class TestTermExample:
             value='TÉstÎng',
         )
         examples = TermExampleFactory.create_batch(
-            language=term.origin_language, size=5
+            link_obj=term,
+            language=term.origin_language,
+            size=5,
         )
         TermExampleFactory.create_batch(size=5)
-        [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term=term.term,
-                origin_language=term.origin_language,
-            )
-            for example in examples
-        ]
 
         response = client.get(
             self.list_example_route(
@@ -1934,23 +2118,24 @@ class TestTermExample:
 
         assert response.status_code == 200
         assert len(response.json()) == 5
-        assert [TermExample(**example) for example in response.json()] == examples
-
-    def test_list_example_term_special_character(self, client, session):
-        term = TermFactory(term='TÉstê')
-        examples = TermExampleFactory.create_batch(
-            language=term.origin_language, size=5
-        )
-        TermExampleFactory.create_batch(size=5)
-        [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term=term.term,
-                origin_language=term.origin_language,
+        assert [
+            TermExampleTranslationView(**example) for example in response.json()
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
             )
             for example in examples
         ]
+
+    def test_list_example_term_special_character(self, client):
+        term = TermFactory(term='TÉstê')
+        examples = TermExampleFactory.create_batch(
+            language=term.origin_language,
+            size=5,
+            link_obj=term,
+        )
+        TermExampleFactory.create_batch(size=5)
 
         response = client.get(
             self.list_example_route(term='teste', origin_language=term.origin_language)
@@ -1958,25 +2143,24 @@ class TestTermExample:
 
         assert response.status_code == 200
         assert len(response.json()) == 5
-        assert [TermExample(**example) for example in response.json()] == examples
+        assert [
+            TermExampleTranslationView(**example) for example in response.json()
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+            )
+            for example in examples
+        ]
 
-    def test_list_example_translation(self, client, session):
+    def test_list_example_translation(self, client):
         term = TermFactory()
         examples = TermExampleFactory.create_batch(
-            language=term.origin_language, size=5
+            link_obj=term, language=term.origin_language, size=5
         )
         translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.RUSSIAN
-            )
-            for example in examples
-        ]
-        links = [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term=term.term,
-                origin_language=term.origin_language,
             )
             for example in examples
         ]
@@ -2002,11 +2186,11 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
-                **link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation, link in zip(examples, translations, links)
+            for example, translation in zip(examples, translations)
         ]
 
     def test_list_example_translation_passing_a_term_form_as_term(
@@ -2022,20 +2206,11 @@ class TestTermExample:
             value='TÉstÎng',
         )
         examples = TermExampleFactory.create_batch(
-            language=term.origin_language, size=5
+            language=term.origin_language, size=5, link_obj=term
         )
         translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.RUSSIAN
-            )
-            for example in examples
-        ]
-        links = [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term=term.term,
-                origin_language=term.origin_language,
             )
             for example in examples
         ]
@@ -2063,11 +2238,11 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
-                **link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation, link in zip(examples, translations, links)
+            for example, translation in zip(examples, translations)
         ]
 
     def test_list_example_empty(self, client):
@@ -2087,6 +2262,7 @@ class TestTermExample:
         TermExampleFactory.create_batch(
             size=5,
             term=term.term,
+            highlight=[[1, 4], [6, 8]],
             origin_language=term.origin_language,
             language=Language.RUSSIAN,
         )
@@ -2102,23 +2278,14 @@ class TestTermExample:
         assert response.status_code == 200
         assert len(response.json()) == 0
 
-    def test_list_example_filter_definition_id(self, client, session):
+    def test_list_example_filter_definition_id(self, client):
         term = TermFactory()
         definition = TermDefinitionFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
-            size=5,
-            language=term.origin_language,
+            size=5, language=term.origin_language, link_obj=definition
         )
-        [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term_definition_id=definition.id,
-            )
-            for example in examples
-        ]
         TermExampleFactory.create_batch(
             size=5,
             language=term.origin_language,
@@ -2131,16 +2298,21 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert [TermExample(**example) for example in response.json()] == examples
+        assert len(response.json()) == 5
+        assert [
+            TermExampleTranslationView(**example) for example in response.json()
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+            )
+            for example in examples
+        ]
 
-    def test_list_example_translation_filter_definition_id(self, client, session):
-        term = TermFactory()
-        definition = TermDefinitionFactory(
-            term=term.term, origin_language=term.origin_language
-        )
+    def test_list_example_translation_filter_definition_id(self, client):
+        definition = TermDefinitionFactory()
         examples = TermExampleFactory.create_batch(
-            size=5,
-            language=term.origin_language,
+            size=5, language=definition.origin_language, link_obj=definition
         )
         translations = [
             TermExampleTranslationFactory(
@@ -2148,18 +2320,10 @@ class TestTermExample:
             )
             for example in examples
         ]
-        links = [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term_definition_id=definition.id,
-            )
-            for example in examples
-        ]
 
         examples2 = TermExampleFactory.create_batch(
             size=5,
-            language=term.origin_language,
+            language=definition.origin_language,
         )
         for example in examples2:
             TermExampleTranslationFactory(term_example_id=example.id)
@@ -2172,37 +2336,29 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert len(response.json()) == 5
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
-                **link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation, link in zip(examples, translations, links)
+            for example, translation in zip(examples, translations)
         ]
 
-    def test_list_example_filter_lexical_id(self, client, session):
+    def test_list_example_filter_lexical_id(self, client):
         term = TermFactory()
         lexical = TermLexicalFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
-            size=5,
-            language=term.origin_language,
+            size=5, language=term.origin_language, link_obj=lexical
         )
         TermExampleFactory.create_batch(
             size=5,
             language=term.origin_language,
         )
-        [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term_lexical_id=lexical.id,
-            )
-            for example in examples
-        ]
 
         response = client.get(
             self.list_example_route(
@@ -2211,28 +2367,28 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert [TermExample(**example) for example in response.json()] == examples
+        assert len(response.json()) == 5
+        assert [
+            TermExampleTranslationView(**example) for example in response.json()
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+            )
+            for example in examples
+        ]
 
-    def test_list_example_translation_filter_lexical_id(self, client, session):
+    def test_list_example_translation_filter_lexical_id(self, client):
         term = TermFactory()
         lexical = TermLexicalFactory(
             term=term.term, origin_language=term.origin_language
         )
         examples = TermExampleFactory.create_batch(
-            size=5,
-            language=term.origin_language,
+            size=5, language=term.origin_language, link_obj=lexical
         )
         translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.PORTUGUESE
-            )
-            for example in examples
-        ]
-        links = [
-            TermExampleLink.create(
-                session,
-                term_example_id=example.id,
-                term_lexical_id=lexical.id,
             )
             for example in examples
         ]
@@ -2252,14 +2408,15 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert len(response.json()) == 5
         assert [TermExampleView(**example) for example in response.json()] == [
             TermExampleView(
                 **example.model_dump(),
-                **link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
-            for example, translation, link in zip(examples, translations, links)
+            for example, translation in zip(examples, translations)
         ]
 
     def test_list_example_model_link_not_set(self, client):
@@ -2299,159 +2456,6 @@ class TestTermExample:
 
         assert response.status_code == 422
         assert 'reference two objects at once' in response.json()['detail'][0]['msg']
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example(self, client, session, generate_payload, token_header):
-        payload = generate_payload(TermExampleFactory, include={'example'})
-        example = TermExampleFactory()
-
-        response = client.patch(
-            self.update_example_route(example.id),
-            json=payload,
-            headers=token_header,
-        )
-        session.refresh(example)
-
-        assert response.status_code == 200
-        assert example.example == payload['example']
-
-    def test_update_example_user_not_authenticated(self, client, generate_payload):
-        payload = generate_payload(TermExampleFactory, include={'example'})
-        example = TermExampleFactory()
-
-        response = client.patch(
-            self.update_example_route(example.id),
-            json=payload,
-        )
-
-        assert response.status_code == 401
-
-    def test_update_example_user_not_enough_permissions(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermExampleFactory, include={'example'})
-        example = TermExampleFactory()
-
-        response = client.patch(
-            self.update_example_route(example.id),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 403
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_does_not_exists(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(TermExampleFactory, include={'example'})
-
-        response = client.patch(
-            self.update_example_route(123),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_is_not_highlighted(self, client, token_header):
-        payload = {'example': 'test test test'}
-        example = TermExampleFactory()
-
-        response = client.patch(
-            self.update_example_route(example.id),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 422
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_translation(
-        self, client, session, generate_payload, token_header
-    ):
-        payload = generate_payload(
-            TermExampleTranslationFactory, include={'translation'}
-        )
-        example = TermExampleFactory()
-        translation = TermExampleTranslationFactory(term_example_id=example.id)
-
-        response = client.patch(
-            self.update_example_translation_route(example.id, translation.language),
-            json=payload,
-            headers=token_header,
-        )
-        session.refresh(translation)
-
-        assert response.status_code == 200
-        assert translation.translation == payload['translation']
-
-    def test_update_example_translation_user_not_authenticated(
-        self, client, generate_payload
-    ):
-        payload = generate_payload(
-            TermExampleTranslationFactory, include={'translation'}
-        )
-        example = TermExampleFactory()
-        translation = TermExampleTranslationFactory(term_example_id=example.id)
-
-        response = client.patch(
-            self.update_example_translation_route(example.id, translation.language),
-            json=payload,
-        )
-
-        assert response.status_code == 401
-
-    def test_update_example_translation_user_not_enough_permission(
-        self, client, generate_payload, token_header
-    ):
-        payload = generate_payload(
-            TermExampleTranslationFactory, include={'translation'}
-        )
-        example = TermExampleFactory()
-        translation = TermExampleTranslationFactory(term_example_id=example.id)
-
-        response = client.patch(
-            self.update_example_translation_route(example.id, translation.language),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 403
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_translation_example_does_not_exists(
-        self, client, session, generate_payload, token_header
-    ):
-        payload = generate_payload(
-            TermExampleTranslationFactory, include={'translation'}
-        )
-
-        response = client.patch(
-            self.update_example_translation_route(123, Language.PORTUGUESE),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_update_example_translation_is_not_highlighted(self, client, token_header):
-        payload = {'translation': 'test test test'}
-        example = TermExampleFactory()
-        translation = TermExampleTranslationFactory(term_example_id=example.id)
-
-        response = client.patch(
-            self.update_example_translation_route(
-                example.id,
-                translation.language,
-            ),
-            json=payload,
-            headers=token_header,
-        )
-
-        assert response.status_code == 422
 
 
 class TestTermLexical:

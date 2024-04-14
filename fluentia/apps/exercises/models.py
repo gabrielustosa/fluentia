@@ -10,6 +10,7 @@ class Exercise(SQLModel, table=True):
     id: int = Field(primary_key=True)
     language: Language
     type: ExerciseType
+    translation_language: Language | None = None
     term: str | None = None
     origin_language: Language | None = None
     term_example_id: int | None = None

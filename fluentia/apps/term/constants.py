@@ -8,7 +8,7 @@ class TermLexicalType(str, Enum):
     IDIOM = 'idiom'
 
 
-class TermLevel(str, Enum):
+class Level(str, Enum):
     BEGINNER = 'A1'
     ELEMENTARY = 'A2'
     INTERMEDIATE = 'B1'

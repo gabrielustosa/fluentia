@@ -3,7 +3,7 @@ from sqlmodel import select
 from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term.constants import TermLexicalType
-from fluentia.apps.term.models import PronunciationLink, TermExampleLink
+from fluentia.apps.term.models import PronunciationLink
 from fluentia.tests.factories.term import (
     PronunciationFactory,
     TermExampleFactory,
@@ -12,18 +12,14 @@ from fluentia.tests.factories.term import (
 )
 
 
-def test_write_exercise_event(session):
+def test_order_exercise_event(session):
     example = TermExampleFactory()
-    TermExampleLink.create(
-        session,
-        term_example_id=example.id,
-    )
 
     exercise = session.exec(
         select(Exercise).where(
             Exercise.term_example_id == example.id,
             Exercise.language == example.language,
-            Exercise.type == ExerciseType.WRITE_SENTENCE,
+            Exercise.type == ExerciseType.ORDER_SENTENCE,
         )
     ).first()
 
@@ -78,14 +74,7 @@ def test_listen_exercise_audio_file_none(session):
 
 
 def test_listen_exercise_sentence(session):
-    term = TermFactory()
     example = TermExampleFactory()
-    TermExampleLink.create(
-        session,
-        term=term.term,
-        origin_language=term.origin_language,
-        term_example_id=example.id,
-    )
     pronunciation = PronunciationFactory()
 
     PronunciationLink.create(
@@ -195,10 +184,6 @@ def test_speak_exercise_term(session):
 
 def test_speak_exercise_sentence(session):
     example = TermExampleFactory()
-    TermExampleLink.create(
-        session,
-        term_example_id=example.id,
-    )
 
     exercise = session.exec(
         select(Exercise).where(
