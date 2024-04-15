@@ -5,6 +5,7 @@ from sqlmodel import select
 from fluentia.apps.card.models import Card, CardSet
 from fluentia.apps.card.schema import CardSchemaView, CardSetSchemaView
 from fluentia.apps.term.constants import TermLexicalType
+from fluentia.core.api.query import set_url_params
 from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.main import app
 from fluentia.tests.factories.card import CardFactory, CardSetFactory
@@ -14,7 +15,6 @@ from fluentia.tests.factories.term import (
     TermFactory,
     TermLexicalFactory,
 )
-from fluentia.tests.utils import set_url_params
 
 
 class TestCardSet:

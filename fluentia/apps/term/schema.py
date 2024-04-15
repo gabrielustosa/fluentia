@@ -98,9 +98,12 @@ class TermDefinitionSchema(TermSchemaBase):
     definition: str = Field(
         examples=['Set of walls, rooms, and roof with specific purpose of habitation.']
     )
-    extra: dict | None = None
     level: constants.Level | None = None
     term_lexical_id: int | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )
 
 
 class TermDefinitionView(TermDefinitionSchema):
@@ -120,7 +123,10 @@ class TermDefinitionSchemaUpdate(BaseModel):
         default=None,
     )
     part_of_speech: str | None = Field(default=None, examples=(['substantivo']))
-    extra: dict | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )
 
 
 class TermDefinitionTranslationSchema(BaseModel):
@@ -130,7 +136,10 @@ class TermDefinitionTranslationSchema(BaseModel):
     translation: str = Field(
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
-    extra: dict | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )
 
 
 class TermDefinitionTranslationUpdate(BaseModel):
@@ -139,7 +148,10 @@ class TermDefinitionTranslationUpdate(BaseModel):
         default=None,
         examples=['Conjunto de parades, quartos e teto com a finalidade de habitação.'],
     )
-    extra: dict | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )
 
 
 class ExampleHighlightValidator:
@@ -220,7 +232,7 @@ class TermExampleSchema(TermExampleLinkSchema, ExampleHighlightValidator):
     language: constants.Language
     example: str = Field(examples=["Yesterday a have lunch in my mother's house."])
     highlight: list[list[int]] = Field(
-        examples=[[4, 8], [11, 16]],
+        examples=[[[4, 8], [11, 16]]],
         description='Highlighted positions in the given sentence where the term appears.',
     )
     level: constants.Level | None = None
@@ -237,7 +249,7 @@ class TermExampleTranslationSchema(BaseModel, ExampleHighlightValidator):
         examples=['Ontem eu almoçei na casa da minha mãe.'],
     )
     highlight: list[list[int]] = Field(
-        examples=[[4, 8], [11, 16]],
+        examples=[[[4, 8], [11, 16]]],
         description='Highlighted positions in the given translation sentence where the term appears.',
     )
 
@@ -249,7 +261,7 @@ class TermExampleTranslationView(TermExampleView):
     )
     translation_highlight: list[list[int]] | None = Field(
         default=None,
-        examples=[[4, 8], [11, 16]],
+        examples=[[[4, 8], [11, 16]]],
         description='Highlighted positions in the given sentence where the term appears.',
     )
 
@@ -257,7 +269,10 @@ class TermExampleTranslationView(TermExampleView):
 class TermLexicalSchema(TermSchemaBase):
     value: str = Field(examples=['Lar'])
     type: constants.TermLexicalType
-    extra: dict | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )
 
 
 class TermLexicalView(TermLexicalSchema):
@@ -266,4 +281,7 @@ class TermLexicalView(TermLexicalSchema):
 
 class TermLexicalUpdate(BaseModel):
     value: str | None = Field(default=None, examples=['Lar'])
-    extra: dict | None = None
+    extra: dict | None = Field(
+        default=None,
+        examples=[{'syllable': ['ca', 'sa'], 'part': 'en'}],
+    )

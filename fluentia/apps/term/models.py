@@ -4,7 +4,9 @@ from sqlalchemy.event import listens_for
 
 from fluentia.apps.exercises.constants import ExerciseType
 from fluentia.apps.exercises.models import Exercise
-from fluentia.apps.term import constants
+from fluentia.apps.term import constants, schema
+from fluentia.core.api.query import set_url_params
+from fluentia.core.api.schema import Page
 from fluentia.core.model.shortcut import (
     create,
     get_object_or_404,
@@ -357,7 +359,20 @@ class TermDefinitionTranslation(sm.SQLModel, table=True):
                 TermDefinition.id == TermDefinitionTranslation.term_definition_id,  # pyright: ignore[reportArgumentType]
             )
         )
-        return session.exec(query_translation)
+        rows = session.exec(query_translation)
+
+        result_list = []
+        for row in rows:
+            db_definition, db_definition_translation = row
+            result_list.append(
+                schema.TermDefinitionView(
+                    **db_definition.model_dump(),
+                    translation_language=db_definition_translation.language,
+                    translation_definition=db_definition_translation.translation,
+                    translation_meaning=db_definition_translation.meaning,
+                )
+            )
+        return result_list
 
     @staticmethod
     def list_meaning(session, term, origin_language, translation_language):
@@ -403,22 +418,55 @@ class TermExample(sm.SQLModel, table=True):
         return create(TermExample, session, **data)
 
     @staticmethod
-    def list(session, **link_attributes):
+    def list(session, page=1, size=50, **link_attributes):
+        from fluentia.main import app
+
         filters = set()
-        if 'term' in link_attributes:
-            term = link_attributes.pop('term')
+        term = link_attributes.pop('term', None)
+        if term:
             db_term = Term.get(session, term, link_attributes['origin_language'])
             if db_term:
                 term = db_term.term
             filters.add(
                 sm.func.clean_text(TermExampleLink.term) == sm.func.clean_text(term)
             )
-        return session.exec(
-            sm.select(TermExample, TermExampleLink)
+
+        example_list_query = (
+            sm.select(
+                TermExample,
+                TermExampleLink,
+                sm.func.count().over().label('total_count'),
+            )
             .join(TermExampleLink, TermExample.id == TermExampleLink.term_example_id)  # pyright: ignore[reportArgumentType]
             .filter_by(**link_attributes)
-            .filter(*filters)
-        ).all()
+            .where(*filters)
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+
+        rows = session.exec(example_list_query).all()
+
+        result_list = []
+        for row in rows:
+            db_example, db_example_link, _ = row
+            result_list.append(
+                schema.TermExampleTranslationView(
+                    **db_example.model_dump(),
+                    **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
+                )
+            )
+
+        if term:
+            link_attributes['term'] = term
+        url = app.url_path_for('list_example')
+        return Page(
+            items=result_list,
+            total=0 if len(rows) == 0 else rows[0][2],
+            next_page=set_url_params(url, **link_attributes, page=page + 1, size=size),
+            previous_page=None
+            if page == 1
+            else set_url_params(url, **link_attributes, page=page - 1, size=size),
+        )
 
 
 class TermExampleLink(sm.SQLModel, table=True):
@@ -504,21 +552,25 @@ class TermExampleTranslation(sm.SQLModel, table=True):
         return create(TermExampleTranslation, session, **data)
 
     @staticmethod
-    def list(session, translation_language, **link_attributes):
+    def list(session, translation_language, page=1, size=50, **link_attributes):
+        from fluentia.main import app
+
         filters = set()
-        if 'term' in link_attributes:
-            term = link_attributes.pop('term')
+        term = link_attributes.pop('term', None)
+        if term:
             db_term = Term.get(session, term, link_attributes['origin_language'])
             if db_term:
                 term = db_term.term
             filters.add(
                 sm.func.clean_text(TermExampleLink.term) == sm.func.clean_text(term)
             )
-        return session.exec(
+
+        example_list_query = (
             sm.select(
                 TermExample,
                 TermExampleTranslation,
                 TermExampleLink,
+                sm.func.count().over().label('total_count'),
             )
             .join(
                 TermExampleTranslation,
@@ -530,7 +582,48 @@ class TermExampleTranslation(sm.SQLModel, table=True):
             )
             .where(TermExampleTranslation.language == translation_language, *filters)
             .filter_by(**link_attributes)
-        ).all()
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+
+        rows = session.exec(example_list_query).all()
+
+        result_list = []
+        for row in rows:
+            db_example, db_example_translation, db_example_link, _ = row
+            result_list.append(
+                schema.TermExampleTranslationView(
+                    **db_example.model_dump(),
+                    **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
+                    translation_language=db_example_translation.language,
+                    translation_example=db_example_translation.translation,
+                    translation_highlight=db_example_translation.highlight,
+                )
+            )
+
+        if term:
+            link_attributes['term'] = term
+        url = app.url_path_for('list_example')
+        return Page(
+            items=result_list,
+            total=0 if len(rows) == 0 else rows[0][3],
+            next_page=set_url_params(
+                url,
+                **link_attributes,
+                translation_language=translation_language,
+                page=page + 1,
+                size=size,
+            ),
+            previous_page=None
+            if page == 1
+            else set_url_params(
+                url,
+                **link_attributes,
+                translation_language=translation_language,
+                page=page - 1,
+                size=size,
+            ),
+        )
 
     __table_args__ = (
         sm.ForeignKeyConstraint(
@@ -572,20 +665,56 @@ class TermLexical(sm.SQLModel, table=True):
         return create(TermLexical, session, **data)
 
     @staticmethod
-    def list(session, term, origin_language, type=None):
-        filters = set()
-        if type is not None:
-            filters.add(TermLexical.type == type.lower())
+    def list(session, term, origin_language, page=1, size=50, type=None):
+        from fluentia.main import app
+
         db_term = Term.get(session, term, origin_language)
         if db_term:
             term = db_term.term
-
-        return session.exec(
-            sm.select(TermLexical).where(
+        lexical_query = (
+            sm.select(
+                TermLexical,
+                sm.func.count().over().label('total_count'),
+            )
+            .where(
                 sm.func.clean_text(TermLexical.term) == sm.func.clean_text(term),
                 TermLexical.origin_language == origin_language,
-                *filters,
             )
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        if type is not None:
+            lexical_query = lexical_query.where(TermLexical.type == type.lower())
+
+        rows = session.exec(lexical_query).all()
+
+        result_list = []
+        for row in rows:
+            db_lexical, _ = row
+            result_list.append(db_lexical)
+
+        url = app.url_path_for('list_lexical')
+        return Page(
+            items=result_list,
+            total=0 if len(rows) == 0 else rows[0][1],
+            next_page=set_url_params(
+                url,
+                term=term,
+                origin_language=origin_language,
+                type=type,
+                page=page + 1,
+                size=size,
+            ),
+            previous_page=None
+            if page == 1
+            else set_url_params(
+                url,
+                term=term,
+                origin_language=origin_language,
+                type=type,
+                page=page - 1,
+                size=size,
+            ),
         )
 
     @staticmethod

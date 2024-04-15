@@ -20,6 +20,7 @@ from fluentia.apps.term.schema import (
     TermLexicalSchema,
     TermSchema,
 )
+from fluentia.core.api.query import set_url_params
 from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.main import app
 from fluentia.tests.factories.term import (
@@ -31,7 +32,7 @@ from fluentia.tests.factories.term import (
     TermFactory,
     TermLexicalFactory,
 )
-from fluentia.tests.utils import assert_json_response, set_url_params
+from fluentia.tests.utils import assert_json_response
 
 
 class TestTerm:
@@ -1555,6 +1556,8 @@ class TestTermExample:
         translation_language=None,
         term_definition_id=None,
         term_lexical_id=None,
+        page=None,
+        size=None,
     ):
         url = app.url_path_for('list_example')
         return set_url_params(
@@ -1564,6 +1567,8 @@ class TestTermExample:
             translation_language=translation_language,
             term_definition_id=term_definition_id,
             term_lexical_id=term_lexical_id,
+            page=page,
+            size=size,
         )
 
     def _get_linked_attributes(self, attr, db_model):
@@ -2081,9 +2086,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
+        assert len(response.json()['items']) == 5
         assert [
-            TermExampleTranslationView(**example) for example in response.json()
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
@@ -2091,6 +2097,40 @@ class TestTermExample:
             )
             for example in examples
         ]
+
+    def test_list_example_pagination(self, client):
+        term = TermFactory()
+        TermExampleFactory.create_batch(
+            language=term.origin_language,
+            size=15,
+            link_obj=term,
+        )
+
+        response = client.get(
+            self.list_example_route(
+                term=term.term,
+                origin_language=term.origin_language,
+                size=5,
+                page=2,
+            )
+        )
+
+        assert response.status_code == 200
+        assert response.json()['total'] == 15
+        assert 'size=5' in response.json()['next_page']
+        assert 'page=3' in response.json()['next_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['next_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['next_page']
+        )
+        assert 'size=5' in response.json()['previous_page']
+        assert 'page=1' in response.json()['previous_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['previous_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['previous_page']
+        )
 
     def test_list_example_passing_a_term_form_as_term(
         self,
@@ -2117,9 +2157,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
+        assert len(response.json()['items']) == 5
         assert [
-            TermExampleTranslationView(**example) for example in response.json()
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
@@ -2142,9 +2183,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
+        assert len(response.json()['items']) == 5
         assert [
-            TermExampleTranslationView(**example) for example in response.json()
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
@@ -2182,8 +2224,8 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermExampleView(**example) for example in response.json()] == [
+        assert len(response.json()['items']) == 5
+        assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
                 **example.link.model_dump(exclude={'term_example_id', 'id'}),
@@ -2192,6 +2234,53 @@ class TestTermExample:
             )
             for example, translation in zip(examples, translations)
         ]
+
+    def test_list_example_translation_pagination(self, client):
+        term = TermFactory()
+        examples = TermExampleFactory.create_batch(
+            link_obj=term, language=term.origin_language, size=15
+        )
+        [
+            TermExampleTranslationFactory(
+                term_example_id=example.id, language=Language.RUSSIAN
+            )
+            for example in examples
+        ]
+
+        examples2 = TermExampleFactory.create_batch(
+            term=term.term, origin_language=term.origin_language, size=5
+        )
+        for example in examples2:
+            TermExampleTranslationFactory(
+                term_example_id=example.id, language=Language.SPANISH
+            )
+
+        response = client.get(
+            self.list_example_route(
+                term=term.term,
+                origin_language=term.origin_language,
+                translation_language=Language.RUSSIAN,
+                page=2,
+                size=5,
+            )
+        )
+
+        assert response.status_code == 200
+        assert response.json()['total'] == 15
+        assert 'size=5' in response.json()['next_page']
+        assert 'page=3' in response.json()['next_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['next_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['next_page']
+        )
+        assert 'size=5' in response.json()['previous_page']
+        assert 'page=1' in response.json()['previous_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['previous_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['previous_page']
+        )
 
     def test_list_example_translation_passing_a_term_form_as_term(
         self,
@@ -2234,8 +2323,8 @@ class TestTermExample:
         [session.refresh(translation) for translation in translations]
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermExampleView(**example) for example in response.json()] == [
+        assert len(response.json()['items']) == 5
+        assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
                 **example.link.model_dump(exclude={'term_example_id', 'id'}),
@@ -2255,7 +2344,7 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 0
+        assert len(response.json()['items']) == 0
 
     def test_list_example_empty_translation(self, client):
         term = TermFactory()
@@ -2276,7 +2365,7 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 0
+        assert len(response.json()['items']) == 0
 
     def test_list_example_filter_definition_id(self, client):
         term = TermFactory()
@@ -2298,9 +2387,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
+        assert len(response.json()['items']) == 5
         assert [
-            TermExampleTranslationView(**example) for example in response.json()
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
@@ -2336,8 +2426,8 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermExampleView(**example) for example in response.json()] == [
+        assert len(response.json()['items']) == 5
+        assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
                 **example.link.model_dump(exclude={'term_example_id', 'id'}),
@@ -2367,9 +2457,10 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
+        assert len(response.json()['items']) == 5
         assert [
-            TermExampleTranslationView(**example) for example in response.json()
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
@@ -2408,8 +2499,8 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermExampleView(**example) for example in response.json()] == [
+        assert len(response.json()['items']) == 5
+        assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
                 **example.link.model_dump(exclude={'term_example_id', 'id'}),
@@ -2461,10 +2552,17 @@ class TestTermExample:
 class TestTermLexical:
     create_lexical_route = app.url_path_for('create_lexical')
 
-    def list_lexical_route(self, term=None, origin_language=None, type=None):
+    def list_lexical_route(
+        self, term=None, origin_language=None, type=None, page=None, size=None
+    ):
         url = app.url_path_for('list_lexical')
         return set_url_params(
-            url, term=term, origin_language=origin_language, type=type
+            url,
+            term=term,
+            origin_language=origin_language,
+            type=type,
+            page=page,
+            size=size,
         )
 
     def update_lexical_route(self, lexical_id):
@@ -2557,8 +2655,48 @@ class TestTermLexical:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
+        assert len(response.json()['items']) == 5
+        assert [
+            TermLexical(**lexical) for lexical in response.json()['items']
+        ] == term_lexicals
+
+    def test_list_lexical_pagination(self, client):
+        term = TermFactory()
+        TermLexicalFactory.create_batch(
+            term=term.term,
+            origin_language=term.origin_language,
+            type=TermLexicalType.ANTONYM,
+            size=15,
+        )
+
+        response = client.get(
+            self.list_lexical_route(
+                term=term.term,
+                origin_language=term.origin_language,
+                type=TermLexicalType.ANTONYM,
+                page=2,
+                size=5,
+            )
+        )
+
+        assert response.status_code == 200
+        assert response.json()['total'] == 15
+        assert 'size=5' in response.json()['next_page']
+        assert 'page=3' in response.json()['next_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['next_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['next_page']
+        )
+        assert TermLexicalType.ANTONYM.value in response.json()['next_page']
+        assert 'size=5' in response.json()['previous_page']
+        assert 'page=1' in response.json()['previous_page']
+        assert f'term={term.term.replace(" ", "+")}' in response.json()['previous_page']
+        assert (
+            f'origin_language={term.origin_language.value}'
+            in response.json()['previous_page']
+        )
+        assert TermLexicalType.ANTONYM.value in response.json()['previous_page']
 
     def test_list_lexical_passing_a_term_form_as_term(
         self,
@@ -2587,8 +2725,10 @@ class TestTermLexical:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
+        assert len(response.json()['items']) == 5
+        assert [
+            TermLexical(**lexical) for lexical in response.json()['items']
+        ] == term_lexicals
 
     def test_list_lexical_term_special_character(self, client):
         term = TermFactory(term='TésTÊ')
@@ -2608,8 +2748,10 @@ class TestTermLexical:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 5
-        assert [TermLexical(**lexical) for lexical in response.json()] == term_lexicals
+        assert len(response.json()['items']) == 5
+        assert [
+            TermLexical(**lexical) for lexical in response.json()['items']
+        ] == term_lexicals
 
     def test_list_lexical_empty(self, client):
         response = client.get(
@@ -2617,7 +2759,7 @@ class TestTermLexical:
         )
 
         assert response.status_code == 200
-        assert len(response.json()) == 0
+        assert len(response.json()['items']) == 0
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_update_lexical(self, session, client, generate_payload, token_header):

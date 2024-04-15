@@ -13,6 +13,7 @@ from fluentia.core.api.constants import (
     TERM_NOT_FOUND,
     USER_NOT_AUTHORIZED,
 )
+from fluentia.core.api.schema import Page
 from fluentia.core.model.shortcut import get_object_or_404
 from fluentia.database import get_session
 
@@ -102,7 +103,7 @@ def get_term(
     if lexical:
         lexical_list = [
             schema.TermLexicalSchema(**lexical.model_dump())
-            for lexical in models.TermLexical.list(session, term, origin_language)
+            for lexical in models.TermLexical.list(session, term, origin_language).items
         ]
 
     pronunciation_list = []
@@ -348,32 +349,21 @@ def list_definition(
 ):
     if translation_language is None:
         return models.TermDefinition.list(
-            session,
-            term,
-            origin_language,
-            part_of_speech,
-            level,
+            session=session,
+            term=term,
+            origin_language=origin_language,
+            part_of_speech=part_of_speech,
+            level=level,
         )
 
-    definition_list = []
-    for row in models.TermDefinitionTranslation.list(
-        session,
-        term,
-        origin_language,
-        part_of_speech,
-        level,
-        translation_language,
-    ).all():
-        db_definition, db_definition_translation = row
-        definition_list.append(
-            schema.TermDefinitionView(
-                **db_definition.model_dump(),
-                translation_language=db_definition_translation.language,
-                translation_definition=db_definition_translation.translation,
-                translation_meaning=db_definition_translation.meaning,
-            )
-        )
-    return definition_list
+    return models.TermDefinitionTranslation.list(
+        session=session,
+        term=term,
+        origin_language=origin_language,
+        part_of_speech=part_of_speech,
+        level=level,
+        translation_language=translation_language,
+    )
 
 
 @term_router.patch(
@@ -544,7 +534,7 @@ def create_example_translation(
 @term_router.get(
     path='/example',
     status_code=200,
-    response_model=list[schema.TermExampleTranslationView],
+    response_model=Page[schema.TermExampleTranslationView],
     response_description='Consulta de um exemplo para determinado termo.',
     summary='Consulta de exemplos sobre um termo.',
     description='Endpoint utilizado para consultar exemplos de termos ou definições.',
@@ -556,38 +546,24 @@ def list_example(
         default=None,
         description='Caso houver exemplos para a tradução requirida ela será retornada.',
     ),
+    page: int = Query(default=1, ge=1, description='Número da página'),
+    size: int = Query(default=50, ge=1, le=100, description='Número de páginas'),
 ):
-    example_list = []
     if translation_language is None:
-        for row in models.TermExample.list(
-            session,
+        return models.TermExample.list(
+            session=session,
+            page=page,
+            size=size,
             **example_link_schema.model_dump(exclude_none=True),
-        ):
-            db_example, db_example_link = row
-            example_list.append(
-                schema.TermExampleTranslationView(
-                    **db_example.model_dump(),
-                    **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
-                )
-            )
-        return example_list
-
-    for row in models.TermExampleTranslation.list(
-        session,
-        translation_language,
-        **example_link_schema.model_dump(exclude_none=True),
-    ):
-        db_example, db_example_translation, db_example_link = row
-        example_list.append(
-            schema.TermExampleTranslationView(
-                **db_example.model_dump(),
-                **db_example_link.model_dump(exclude={'term_example_id', 'id'}),
-                translation_language=db_example_translation.language,
-                translation_example=db_example_translation.translation,
-                translation_highlight=db_example_translation.highlight,
-            )
         )
-    return example_list
+
+    return models.TermExampleTranslation.list(
+        session=session,
+        translation_language=translation_language,
+        page=page,
+        size=size,
+        **example_link_schema.model_dump(exclude_none=True),
+    )
 
 
 @term_router.post(
@@ -614,7 +590,7 @@ def create_lexical(
 @term_router.get(
     path='/lexical',
     status_code=200,
-    response_model=list[schema.TermLexicalView],
+    response_model=Page[schema.TermLexicalView],
     summary='Consulta de relação de uma relação lexical.',
     description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
 )
@@ -623,8 +599,17 @@ def list_lexical(
     term: str,
     origin_language: constants.Language,
     type: constants.TermLexicalType,
+    page: int = Query(default=1, ge=1, description='Número da página'),
+    size: int = Query(default=50, ge=1, le=100, description='Número de páginas'),
 ):
-    return models.TermLexical.list(session, term, origin_language, type)
+    return models.TermLexical.list(
+        session=session,
+        term=term,
+        origin_language=origin_language,
+        type=type,
+        page=page,
+        size=size,
+    )
 
 
 @term_router.patch(
