@@ -2467,6 +2467,9 @@ class TestTermLexical:
             url, term=term, origin_language=origin_language, type=type
         )
 
+    def update_lexical_route(self, lexical_id):
+        return app.url_path_for('update_lexical', lexical_id=lexical_id)
+
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_lexical(self, session, client, generate_payload, token_header):
         payload = generate_payload(TermLexicalFactory)
@@ -2615,3 +2618,53 @@ class TestTermLexical:
 
         assert response.status_code == 200
         assert len(response.json()) == 0
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_update_lexical(self, session, client, generate_payload, token_header):
+        lexical = TermLexicalFactory(extra={'test1': 1})
+        payload = generate_payload(TermLexicalFactory, include={'value'})
+        payload.update(extra={'test2': 2})
+
+        response = client.patch(
+            self.update_lexical_route(lexical.id),
+            json=payload,
+            headers=token_header,
+        )
+        session.refresh(lexical)
+
+        assert response.status_code == 200
+        assert lexical.value == payload['value']
+        assert lexical.extra == {'test1': 1, 'test2': 2}
+
+    def test_update_lexical_user_not_authenticated(self, client, generate_payload):
+        lexical = TermLexicalFactory(extra={'test1': 1})
+        payload = generate_payload(TermLexicalFactory, include={'value'})
+
+        response = client.patch(
+            self.update_lexical_route(lexical.id),
+            json=payload,
+        )
+
+        assert response.status_code == 401
+
+    def test_update_lexical_user_not_enough_permission(
+        self, client, generate_payload, token_header
+    ):
+        lexical = TermLexicalFactory(extra={'test1': 1})
+        payload = generate_payload(TermLexicalFactory, include={'value'})
+
+        response = client.patch(
+            self.update_lexical_route(lexical.id), json=payload, headers=token_header
+        )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_update_lexical_not_found(self, client, generate_payload, token_header):
+        payload = generate_payload(TermLexicalFactory, include={'value'})
+
+        response = client.patch(
+            self.update_lexical_route(123), json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404

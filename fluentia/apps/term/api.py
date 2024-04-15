@@ -625,3 +625,24 @@ def list_lexical(
     type: constants.TermLexicalType,
 ):
     return models.TermLexical.list(session, term, origin_language, type)
+
+
+@term_router.patch(
+    path='/lexical/{lexical_id}',
+    status_code=200,
+    response_model=schema.TermLexicalView,
+    summary='Consulta de relação de uma relação lexical.',
+    description='Endpoint utilizado para consultar de relações lexicais entre termos, sendo elas sinônimos, antônimos e conjugações.',
+)
+def update_lexical(
+    user: AdminUser,
+    session: Session,
+    lexical_id: int,
+    lexical_schema: schema.TermLexicalUpdate,
+):
+    db_lexical = get_object_or_404(models.TermLexical, session, id=lexical_id)
+    return models.TermLexical.update(
+        session,
+        db_lexical,
+        **lexical_schema.model_dump(exclude_none=True),
+    )

@@ -588,6 +588,20 @@ class TermLexical(sm.SQLModel, table=True):
             )
         )
 
+    @staticmethod
+    def update(session, db_lexical, **data):
+        extra = data.pop('extra', None)
+        if extra:
+            db_lexical.extra = {**db_lexical.extra, **extra}
+
+        for key, value in data.items():
+            setattr(db_lexical, key, value)
+
+        session.commit()
+        session.refresh(db_lexical)
+
+        return db_lexical
+
 
 @listens_for(TermExample, 'after_insert')
 def insert_order_exercise(_, connection, target):

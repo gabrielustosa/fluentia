@@ -155,13 +155,6 @@ class ExampleHighlightValidator:
                 )
 
             v1, v2 = value
-            interval = range(v1, v2 + 1)
-            if any([i in intervals for i in interval]):
-                raise ValueError(
-                    'highlight interval must not overlap with any other intervals in highlight list.'
-                )
-            intervals.extend(interval)
-
             example_len = len(example) - 1
             if v1 > example_len or v2 > example_len:
                 raise ValueError(
@@ -175,6 +168,14 @@ class ExampleHighlightValidator:
                 raise ValueError(
                     'highlight beginning value cannot be greater than the ending value, since it represents the start and end positions.'
                 )
+
+            interval = range(v1, v2 + 1)
+            if any([i in intervals for i in interval]):
+                raise ValueError(
+                    'highlight interval must not overlap with any other intervals in highlight list.'
+                )
+            intervals.extend(interval)
+
         return self
 
 
@@ -261,3 +262,8 @@ class TermLexicalSchema(TermSchemaBase):
 
 class TermLexicalView(TermLexicalSchema):
     id: int
+
+
+class TermLexicalUpdate(BaseModel):
+    value: str | None = Field(default=None, examples=['Lar'])
+    extra: dict | None = None
