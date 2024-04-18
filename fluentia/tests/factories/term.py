@@ -98,8 +98,9 @@ class TermExampleFactory(factory.alchemy.SQLAlchemyModelFactory):
 
         db_example = super()._create(model_class, *args, **kwargs)
 
-        link = TermExampleLink.create(
-            cls._meta.sqlalchemy_session,
+        link, _ = get_or_create_object(
+            TermExampleLink,
+            session=cls._meta.sqlalchemy_session,
             highlight=[[1, 4], [6, 8]],
             term_example_id=db_example.id,
             **link_attr,
@@ -115,7 +116,6 @@ class TermExampleFactory(factory.alchemy.SQLAlchemyModelFactory):
 
 class TermExampleTranslationFactory(factory.alchemy.SQLAlchemyModelFactory):
     language = fuzzy.FuzzyChoice(Language)
-    highlight = [[1, 4], [6, 8]]
     translation = factory.Faker('sentence')
 
     class Meta:

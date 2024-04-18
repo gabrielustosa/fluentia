@@ -1,4 +1,5 @@
 import pytest
+from sqlmodel import select
 
 from fluentia.apps.term.constants import Language, Level, PartOfSpeech, TermLexicalType
 from fluentia.apps.term.models import (
@@ -1597,6 +1598,33 @@ class TestTermExample:
 
     @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_already_exists(
+        self, client, session, generate_payload, token_header, item
+    ):
+        payload = generate_payload(TermExampleFactory)
+        example = TermExampleFactory(**payload)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(linked_attr, highlight=[[1, 4], [6, 8]])
+
+        response = client.post(
+            self.create_example_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 200
+        assert response.json()['id'] == example.id
+        db_link = session.exec(
+            select(TermExampleLink)
+            .where(
+                TermExampleLink.term_example_id == example.id,
+            )
+            .filter_by(**linked_attr)
+        ).first()
+        assert db_link is not None
+
+    @parametrize_example_link
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example(
         self, session, client, generate_payload, token_header, item
     ):
@@ -1614,6 +1642,14 @@ class TestTermExample:
         assert_json_response(
             session, TermExample, response.json(), id=response.json()['id']
         )
+        db_link = session.exec(
+            select(TermExampleLink)
+            .where(
+                TermExampleLink.term_example_id == response.json()['id'],
+            )
+            .filter_by(**linked_attr)
+        ).first()
+        assert db_link is not None
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_passing_a_term_form_as_term(
@@ -1641,23 +1677,6 @@ class TestTermExample:
         assert_json_response(
             session, TermExample, response.json(), id=response.json()['id']
         )
-
-    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_already_exists(self, client, token_header):
-        term = TermFactory(term='TéStê')
-        payload = {
-            'example': '*test* Têstè',
-            'language': term.origin_language,
-        }
-        payload.update(term.model_dump(), highlight=[[1, 4], [6, 8]])
-        db_example = TermExampleFactory(**payload)
-
-        response = client.post(
-            self.create_example_route, json=payload, headers=token_header
-        )
-
-        assert response.status_code == 200
-        assert response.json()['id'] == db_example.id
 
     def test_create_example_user_is_not_authenticated(self, client, generate_payload):
         term = TermFactory()
@@ -1904,13 +1923,55 @@ class TestTermExample:
             in response.json()['detail'][0]['msg']
         )
 
+    @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation(
-        self, session, client, generate_payload, token_header
+    def test_create_example_translation_already_exists(
+        self, client, session, generate_payload, token_header, item
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
+        payload.update(term_example_id=example.id)
+        TermExampleTranslationFactory(**payload)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(
+            linked_attr,
+            highlight=[[1, 4], [6, 8]],
+        )
+
+        response = client.post(
+            self.create_example_translation_route,
+            json=payload,
+            headers=token_header,
+        )
+
+        assert response.status_code == 200
+        db_link = session.exec(
+            select(TermExampleLink)
+            .where(
+                TermExampleLink.term_example_id == example.id,
+                TermExampleLink.translation_language == payload['language'],
+            )
+            .filter_by(**linked_attr)
+        ).first()
+        assert db_link is not None
+
+    @parametrize_example_link
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation(
+        self, session, client, generate_payload, token_header, item
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(
+            linked_attr,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=example.id,
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -1924,6 +1985,15 @@ class TestTermExample:
             term_example_id=example.id,
             language=payload['language'],
         )
+        db_link = session.exec(
+            select(TermExampleLink)
+            .where(
+                TermExampleLink.term_example_id == example.id,
+                TermExampleLink.translation_language == payload['language'],
+            )
+            .filter_by(**linked_attr)
+        ).first()
+        assert db_link is not None
 
     def test_create_example_translation_user_is_not_authenticated(
         self, client, generate_payload
@@ -1951,10 +2021,16 @@ class TestTermExample:
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_translation_example_was_not_found(
-        self, client, generate_payload, token_header
+        self, client, session, generate_payload, token_header
     ):
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=123, highlight=[[1, 4], [6, 8]])
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=123,
+            highlight=[[1, 4], [6, 8]],
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -1962,28 +2038,153 @@ class TestTermExample:
 
         assert response.status_code == 404
 
+    @parametrize_example_link
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation_conflict(
-        self, client, generate_payload, token_header
+    def test_create_example_translation_with_model_link_not_found(
+        self, client, session, generate_payload, token_header, item
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=[[1, 4], [6, 8]])
-        TermExampleTranslationFactory(**payload)
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        payload.update(
+            linked_attr,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=example.id,
+        )
+        session.delete(db_factory)
+        session.commit()
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 404
+        assert db_factory.__class__.__name__ in response.json()['detail']
+
+    @parametrize_example_link
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_with_conflict(
+        self, session, client, token_header, item
+    ):
+        example = TermExampleFactory()
+        translation = TermExampleTranslationFactory(term_example_id=example.id)
+        session.refresh(translation)
+        payload = translation.model_dump()
+        Factory, attr = item
+        db_factory = Factory()
+        linked_attr = self._get_linked_attributes(attr, db_factory)
+        TermExampleLink.create(
+            session,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=example.id,
+            translation_language=payload['language'],
+            **linked_attr,
+        )
+        payload.update(
+            linked_attr,
+            highlight=[[1, 4], [6, 8]],
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
         )
 
         assert response.status_code == 409
+        assert (
+            response.json()['detail']
+            == 'the example is already linked with this model.'
+        )
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
-    def test_create_example_translation_invalid_num_highlight(
+    def test_create_example_translation_model_link_not_set(
         self, client, generate_payload, token_header
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=[[1, 4, 5], [6, 8]])
+        payload.update(
+            term_example_id=example.id,
+            highlight=[[1, 4], [6, 8]],
+        )
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert 'at least one object to link' in response.json()['detail'][0]['msg']
+
+    @pytest.mark.parametrize('term_attr', ['term', 'origin_language'])
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_model_link_term_not_right_setted(
+        self, client, generate_payload, token_header, term_attr
+    ):
+        term = TermFactory()
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(
+            **{term_attr: getattr(term, term_attr)},
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=example.id,
+        )
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert (
+            'you need to provide term and origin_language attributes'
+            in response.json()['detail'][0]['msg']
+        )
+
+    @pytest.mark.parametrize(
+        'link_attr',
+        [
+            {
+                'term_definition_id': 123,
+                'term': 'test',
+                'origin_language': Language.PORTUGUESE,
+            },
+            {
+                'term_definition_id': 123,
+                'term_lexical_id': 400,
+            },
+        ],
+    )
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_multiple_models(
+        self, client, generate_payload, token_header, link_attr
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        payload.update(
+            link_attr,
+            highlight=[[1, 4], [6, 8]],
+            term_example_id=example.id,
+        )
+
+        response = client.post(
+            self.create_example_translation_route, json=payload, headers=token_header
+        )
+
+        assert response.status_code == 422
+        assert 'reference two objects at once' in response.json()['detail'][0]['msg']
+
+    @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
+    def test_create_example_translation_invalid_num_highlight(
+        self, client, session, generate_payload, token_header
+    ):
+        example = TermExampleFactory()
+        payload = generate_payload(TermExampleTranslationFactory)
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=example.id,
+            highlight=[[1, 4, 5], [6, 8]],
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -2000,11 +2201,17 @@ class TestTermExample:
         'highlight', [[[1, 4], [4, 6]], [[10, 14], [13, 16]], [[0, 3], [0, 9]]]
     )
     def test_create_example_translation_invalid_highlight_interval(
-        self, client, generate_payload, token_header, highlight
+        self, client, session, generate_payload, token_header, highlight
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=highlight)
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=example.id,
+            highlight=highlight,
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -2018,11 +2225,17 @@ class TestTermExample:
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     @pytest.mark.parametrize('highlight', [[[399, 5]], [[5, 699]]])
     def test_create_example_translation_invalid_highlight_len(
-        self, client, generate_payload, token_header, highlight
+        self, client, session, generate_payload, token_header, highlight
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=highlight)
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=example.id,
+            highlight=highlight,
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -2037,11 +2250,17 @@ class TestTermExample:
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     @pytest.mark.parametrize('highlight', [[[-1, 5]], [[-5, -1]]])
     def test_create_example_translation_invalid_highlight_values_lower_than_0(
-        self, client, generate_payload, token_header, highlight
+        self, client, session, generate_payload, token_header, highlight
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=highlight)
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=example.id,
+            highlight=highlight,
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -2055,11 +2274,17 @@ class TestTermExample:
 
     @pytest.mark.parametrize('user', [{'is_superuser': True}], indirect=True)
     def test_create_example_translation_invalid_highlight_value1_greater_than_value2(
-        self, client, generate_payload, token_header
+        self, client, session, generate_payload, token_header
     ):
         example = TermExampleFactory()
         payload = generate_payload(TermExampleTranslationFactory)
-        payload.update(term_example_id=example.id, highlight=[[7, 1]])
+        term = TermFactory()
+        session.refresh(term)
+        payload.update(
+            **term.model_dump(),
+            term_example_id=example.id,
+            highlight=[[7, 1]],
+        )
 
         response = client.post(
             self.create_example_translation_route, json=payload, headers=token_header
@@ -2098,9 +2323,9 @@ class TestTermExample:
             for example in examples
         ]
 
-    def test_list_example_pagination(self, client):
+    def test_list_example_pagination(self, client, session):
         term = TermFactory()
-        TermExampleFactory.create_batch(
+        examples = TermExampleFactory.create_batch(
             language=term.origin_language,
             size=15,
             link_obj=term,
@@ -2114,8 +2339,20 @@ class TestTermExample:
                 page=2,
             )
         )
+        [session.refresh(example) for example in examples]
+        [session.refresh(example.link) for example in examples]
 
         assert response.status_code == 200
+        assert [
+            TermExampleTranslationView(**example)
+            for example in response.json()['items']
+        ] == [
+            TermExampleTranslationView(
+                **example.model_dump(),
+                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+            )
+            for example in examples[5:10]
+        ]
         assert response.json()['total'] == 15
         assert 'size=5' in response.json()['next_page']
         assert 'page=3' in response.json()['next_page']
@@ -2228,7 +2465,9 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
-                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(
+                    exclude={'term_example_id', 'id', 'translation_language'}
+                ),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
@@ -2240,7 +2479,7 @@ class TestTermExample:
         examples = TermExampleFactory.create_batch(
             link_obj=term, language=term.origin_language, size=15
         )
-        [
+        translations = [
             TermExampleTranslationFactory(
                 term_example_id=example.id, language=Language.RUSSIAN
             )
@@ -2266,6 +2505,20 @@ class TestTermExample:
         )
 
         assert response.status_code == 200
+        assert (
+            [TermExampleView(**example) for example in response.json()['items']]
+            == [
+                TermExampleView(
+                    **example.model_dump(),
+                    **example.link.model_dump(
+                        exclude={'term_example_id', 'id', 'translation_language'}
+                    ),
+                    translation_language=translation.language,  # pyright: ignore[reportArgumentType]
+                    translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
+                )
+                for example, translation in zip(examples[5:10], translations[5:10])
+            ]
+        )
         assert response.json()['total'] == 15
         assert 'size=5' in response.json()['next_page']
         assert 'page=3' in response.json()['next_page']
@@ -2327,7 +2580,9 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
-                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(
+                    exclude={'term_example_id', 'id', 'translation_language'}
+                ),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
@@ -2394,7 +2649,9 @@ class TestTermExample:
         ] == [
             TermExampleTranslationView(
                 **example.model_dump(),
-                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(
+                    exclude={'term_example_id', 'id', 'translation_language'}
+                ),
             )
             for example in examples
         ]
@@ -2430,7 +2687,9 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
-                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(
+                    exclude={'term_example_id', 'id', 'translation_language'}
+                ),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
@@ -2503,7 +2762,9 @@ class TestTermExample:
         assert [TermExampleView(**example) for example in response.json()['items']] == [
             TermExampleView(
                 **example.model_dump(),
-                **example.link.model_dump(exclude={'term_example_id', 'id'}),
+                **example.link.model_dump(
+                    exclude={'term_example_id', 'id', 'translation_language'}
+                ),
                 translation_language=translation.language,  # pyright: ignore[reportArgumentType]
                 translation_example=translation.translation,  # pyright: ignore[reportArgumentType]
             )
@@ -2662,7 +2923,7 @@ class TestTermLexical:
 
     def test_list_lexical_pagination(self, client):
         term = TermFactory()
-        TermLexicalFactory.create_batch(
+        lexicals = TermLexicalFactory.create_batch(
             term=term.term,
             origin_language=term.origin_language,
             type=TermLexicalType.ANTONYM,
@@ -2680,6 +2941,9 @@ class TestTermLexical:
         )
 
         assert response.status_code == 200
+        assert [
+            TermLexical(**lexical) for lexical in response.json()['items']
+        ] == lexicals[5:10]
         assert response.json()['total'] == 15
         assert 'size=5' in response.json()['next_page']
         assert 'page=3' in response.json()['next_page']

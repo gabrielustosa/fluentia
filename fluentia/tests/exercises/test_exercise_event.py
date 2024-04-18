@@ -6,7 +6,10 @@ from fluentia.apps.term.constants import TermLexicalType
 from fluentia.apps.term.models import PronunciationLink
 from fluentia.tests.factories.term import (
     PronunciationFactory,
+    TermDefinitionFactory,
+    TermDefinitionTranslationFactory,
     TermExampleFactory,
+    TermExampleTranslationFactory,
     TermFactory,
     TermLexicalFactory,
 )
@@ -14,11 +17,13 @@ from fluentia.tests.factories.term import (
 
 def test_order_exercise_event(session):
     example = TermExampleFactory()
+    translation = TermExampleTranslationFactory(term_example_id=example.id)
 
     exercise = session.exec(
         select(Exercise).where(
             Exercise.term_example_id == example.id,
             Exercise.language == example.language,
+            Exercise.translation_language == translation.language,
             Exercise.type == ExerciseType.ORDER_SENTENCE,
         )
     ).first()
@@ -209,6 +214,7 @@ def test_mchoice_term_exercise(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.MCHOICE_TERM,
         )
     ).first()
@@ -229,7 +235,52 @@ def test_mchoice_term_exercise_only_2_lexical(session):
         select(Exercise).where(
             Exercise.term == term.term,
             Exercise.origin_language == term.origin_language,
+            Exercise.language == term.origin_language,
             Exercise.type == ExerciseType.MCHOICE_TERM,
+        )
+    ).first()
+
+    assert exercise is None
+
+
+def test_mchoice_term_translation_exercise(session):
+    definition = TermDefinitionFactory()
+    TermLexicalFactory.create_batch(
+        3,
+        term=definition.term,
+        origin_language=definition.origin_language,
+        type=TermLexicalType.ANTONYM,
+    )
+    translation = TermDefinitionTranslationFactory(term_definition_id=definition.id)
+
+    exercise = session.exec(
+        select(Exercise).where(
+            Exercise.language == definition.origin_language,
+            Exercise.translation_language == translation.language,
+            Exercise.term_definition_id == definition.id,
+            Exercise.type == ExerciseType.MCHOICE_TERM_TRANSLATION,
+        )
+    ).first()
+
+    assert exercise is not None
+
+
+def test_mchoice_term_translation_exercise_only_2_lexical(session):
+    definition = TermDefinitionFactory()
+    TermLexicalFactory.create_batch(
+        2,
+        term=definition.term,
+        origin_language=definition.origin_language,
+        type=TermLexicalType.ANTONYM,
+    )
+    translation = TermDefinitionTranslationFactory(term_definition_id=definition.id)
+
+    exercise = session.exec(
+        select(Exercise).where(
+            Exercise.language == definition.origin_language,
+            Exercise.translation_language == translation.language,
+            Exercise.term_definition_id == definition.id,
+            Exercise.type == ExerciseType.MCHOICE_TERM_TRANSLATION,
         )
     ).first()
 

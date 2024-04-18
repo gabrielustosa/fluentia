@@ -86,7 +86,7 @@ class Card(sm.SQLModel, table=True):
         return create(Card, session, **data)
 
     @staticmethod
-    def list(session, cardset_id, term=None, note=None):
+    def list_query(cardset_id, term=None, note=None):
         filters = set()
         if term:
             filters.add(
@@ -98,9 +98,11 @@ class Card(sm.SQLModel, table=True):
                     '%' + sm.func.clean_text(note) + '%'
                 ),
             )
-        return session.exec(
-            sm.select(Card).where(Card.cardset_id == cardset_id, *filters)
-        )
+        return sm.select(Card).where(Card.cardset_id == cardset_id, *filters)
+
+    @staticmethod
+    def list(session, cardset_id, term=None, note=None):
+        return session.exec(Card.list_query(cardset_id, term, note))
 
     @staticmethod
     def get_or_404(session, id, user_id):

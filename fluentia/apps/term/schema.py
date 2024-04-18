@@ -242,7 +242,7 @@ class TermExampleView(TermExampleSchema):
     id: int
 
 
-class TermExampleTranslationSchema(BaseModel, ExampleHighlightValidator):
+class TermExampleTranslationSchema(TermExampleLinkSchema, ExampleHighlightValidator):
     term_example_id: int
     language: constants.Language
     translation: str = Field(

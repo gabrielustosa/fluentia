@@ -435,6 +435,9 @@ def update_definition_translation(
     response_model=schema.TermExampleView,
     response_description='Criação de um exemplo para determinado termo ou definição.',
     responses={
+        200: {
+            'description': 'O exemplo enviada já existe, por esse motivo ele foi retornado.',
+        },
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,
@@ -492,15 +495,18 @@ def create_example(
     response_model=schema.TermExampleTranslationSchema,
     response_description='Criação de uma tradução para um exemplo para determinado termo ou definição.',
     responses={
+        200: {
+            'description': 'A tradução do exemplo enviada já existe, por esse motivo ela foi retornada.',
+        },
         401: USER_NOT_AUTHORIZED,
         403: NOT_ENOUGH_PERMISSION,
         404: TERM_NOT_FOUND,
         409: {
-            'description': 'A tradução nesse idioma enviada para esse exemplo já existe.',
+            'description': 'Modelo já fornecido já está ligado com a frase específicada.',
             'content': {
                 'application/json': {
                     'example': {
-                        'detail': 'translation language for this example is already registered.'
+                        'detail': 'the example is already linked with this model.'
                     }
                 }
             },
@@ -520,15 +526,29 @@ def create_example_translation(
         id=translation_schema.term_example_id,
     )
 
-    try:
-        return models.TermExampleTranslation.create(
-            session, **translation_schema.model_dump()
-        )
-    except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail='translation language for this example is already registered.',
-        )
+    db_translation, created = models.TermExampleTranslation.get_or_create(
+        session,
+        **translation_schema.model_dump(
+            include={'language', 'term_example_id', 'translation'}
+        ),
+    )
+
+    db_link = models.TermExampleLink.create(
+        session,
+        translation_language=translation_schema.language,
+        **translation_schema.model_dump(
+            exclude={'language', 'translation'}, exclude_none=True
+        ),
+    )
+
+    session.refresh(db_translation)
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content={
+            **db_translation.model_dump(),
+            **db_link.model_dump(include={'highlight'}),
+        },
+    )
 
 
 @term_router.get(

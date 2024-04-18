@@ -1,22 +1,36 @@
-from fastapi import APIRouter, Query, UploadFile
+from random import random
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Query, UploadFile
+from sqlmodel import Session as SQLModelSession
+
+from fluentia.apps.card.models import CardSet
 from fluentia.apps.exercises import schema
 from fluentia.apps.exercises.constants import ExerciseType
+from fluentia.apps.exercises.models import Exercise
 from fluentia.apps.term.constants import Language, Level
+from fluentia.apps.user.models import User
+from fluentia.apps.user.security import get_current_user
 from fluentia.core.api.constants import (
     CARDSET_NOT_FOUND,
     NOT_ENOUGH_PERMISSION,
     TERM_NOT_FOUND,
     USER_NOT_AUTHORIZED,
 )
+from fluentia.core.api.schema import Page
+from fluentia.core.model.shortcut import get_object_or_404
+from fluentia.database import get_session
 
 exercise_router = APIRouter(prefix='/term/exercise', tags=['exercises'])
+
+Session = Annotated[SQLModelSession, Depends(get_session)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @exercise_router.get(
     path='/',
     status_code=200,
-    response_model=schema.ExerciseSchema,
+    response_model=Page[schema.ExerciseSchema],
     response_description='Lista dos respectivos exercícios solicitados.',
     responses={404: CARDSET_NOT_FOUND},
     summary='Consulta exercícios sobre termos disponíveis.',
@@ -32,19 +46,35 @@ exercise_router = APIRouter(prefix='/term/exercise', tags=['exercises'])
     <br> random: Os exercícios virão aleatoriamente.
     """,
 )
-def get_exercises(
-    exerciseType: ExerciseType,
+def list_exercises(
+    session: Session,
+    current_user: CurrentUser,
+    exercise_type: ExerciseType,
     language: Language,
-    term_level: Level | None = Query(
+    level: Level | None = Query(
         default=None, description='Filtar por dificuldade do termo.'
     ),
     cardset_id: int | None = Query(
         default=None, description='Filtrar por conjunto de cartas.'
     ),
-    seed: float | None = Query(default=None, le=1, ge=0),
-    page: int | None = Query(default=None, le=1),
+    seed: float = Query(default_factory=random, le=1, ge=0),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=50, ge=1, le=100),
 ):
-    pass
+    if cardset_id:
+        get_object_or_404(CardSet, session, id=cardset_id, user_id=current_user.id)
+
+    return Exercise.list_(
+        session=session,
+        exercise_type=exercise_type,
+        language=language,
+        translation_language=current_user.native_language,
+        seed=seed,
+        level=level,
+        cardset_id=cardset_id,
+        page=page,
+        size=size,
+    )
 
 
 @exercise_router.get(

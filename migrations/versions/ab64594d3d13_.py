@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 4ca484876d7e
+Revision ID: ab64594d3d13
 Revises: 
-Create Date: 2024-04-13 14:01:48.876073
+Create Date: 2024-04-18 13:27:32.984821
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '4ca484876d7e'
+revision: str = 'ab64594d3d13'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -67,7 +67,6 @@ def upgrade() -> None:
     op.create_table('termexampletranslation',
     sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
     sa.Column('term_example_id', sa.Integer(), nullable=False),
-    sa.Column('highlight', sa.ARRAY(sa.Integer(), dimensions=2), nullable=False),
     sa.Column('translation', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ),
     sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ondelete='CASCADE'),
@@ -95,22 +94,6 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('exercise',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
-    sa.Column('type', sa.Enum('ORDER_SENTENCE', 'LISTEN_TERM', 'LISTEN_TERM_MCHOICE', 'LISTEN_SENTENCE', 'SPEAK_TERM', 'SPEAK_SENTENCE', 'MCHOICE_TERM', 'RANDOM', name='exercisetype'), nullable=False),
-    sa.Column('translation_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
-    sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
-    sa.Column('term_example_id', sa.Integer(), nullable=True),
-    sa.Column('pronunciation_id', sa.Integer(), nullable=True),
-    sa.Column('term_lexical_id', sa.Integer(), nullable=True),
-    sa.ForeignKeyConstraint(['pronunciation_id'], ['pronunciation.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('pronunciationlink',
     sa.Column('pronunciation_id', sa.Integer(), nullable=False),
     sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
@@ -136,16 +119,22 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_table('exercisehistory',
+    op.create_table('exercise',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('exercise_id', sa.Integer(), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('created', sa.DateTime(), nullable=False),
-    sa.Column('correct', sa.Boolean(), nullable=False),
-    sa.Column('text_response', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('text_request', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.ForeignKeyConstraint(['exercise_id'], ['exercise.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+    sa.Column('language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=False),
+    sa.Column('type', sa.Enum('ORDER_SENTENCE', 'LISTEN_TERM', 'LISTEN_TERM_MCHOICE', 'LISTEN_SENTENCE', 'SPEAK_TERM', 'SPEAK_SENTENCE', 'MCHOICE_TERM', 'MCHOICE_TERM_TRANSLATION', 'RANDOM', name='exercisetype'), nullable=False),
+    sa.Column('translation_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
+    sa.Column('term', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
+    sa.Column('term_example_id', sa.Integer(), nullable=True),
+    sa.Column('pronunciation_id', sa.Integer(), nullable=True),
+    sa.Column('term_lexical_id', sa.Integer(), nullable=True),
+    sa.Column('term_definition_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['pronunciation_id'], ['pronunciation.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['term_definition_id'], ['termdefinition.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('termdefinitiontranslation',
@@ -165,10 +154,29 @@ def upgrade() -> None:
     sa.Column('origin_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
     sa.Column('term_definition_id', sa.Integer(), nullable=True),
     sa.Column('term_lexical_id', sa.Integer(), nullable=True),
+    sa.Column('translation_language', sa.Enum('PORTUGUESE', 'ENGLISH', 'DEUTSCH', 'FRENCH', 'SPANISH', 'ITALIAN', 'CHINESE', 'JAPONESE', 'RUSSIAN', name='language'), nullable=True),
     sa.ForeignKeyConstraint(['term', 'origin_language'], ['term.term', 'term.origin_language'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['term_definition_id'], ['termdefinition.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['term_example_id'], ['termexample.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['term_lexical_id'], ['termlexical.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('term', 'origin_language', 'term_example_id'),
+    sa.UniqueConstraint('term', 'origin_language', 'term_example_id', 'translation_language'),
+    sa.UniqueConstraint('term_definition_id', 'term_example_id'),
+    sa.UniqueConstraint('term_definition_id', 'term_example_id', 'translation_language'),
+    sa.UniqueConstraint('term_lexical_id', 'term_example_id'),
+    sa.UniqueConstraint('term_lexical_id', 'term_example_id', 'translation_language')
+    )
+    op.create_table('exercisehistory',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('exercise_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('created', sa.DateTime(), nullable=False),
+    sa.Column('correct', sa.Boolean(), nullable=False),
+    sa.Column('text_response', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('text_request', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.ForeignKeyConstraint(['exercise_id'], ['exercise.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###
@@ -176,12 +184,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('exercisehistory')
     op.drop_table('termexamplelink')
     op.drop_table('termdefinitiontranslation')
-    op.drop_table('exercisehistory')
+    op.drop_table('exercise')
     op.drop_table('termdefinition')
     op.drop_table('pronunciationlink')
-    op.drop_table('exercise')
     op.drop_table('card')
     op.drop_table('termlexical')
     op.drop_table('termexampletranslation')
